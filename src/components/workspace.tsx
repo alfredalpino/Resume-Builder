@@ -99,6 +99,8 @@ export function Workspace({ userName, userEmail }: Props) {
   const [draftStatus, setDraftStatus] = useState<string | null>(null);
   const [processStep, setProcessStep] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isNarrow, setIsNarrow] = useState(false);
+  const [compareSide, setCompareSide] = useState<"original" | "tailored">("tailored");
   const scoreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const previewPaneRef = useRef<HTMLDivElement | null>(null);
@@ -198,7 +200,7 @@ export function Workspace({ userName, userEmail }: Props) {
     };
   }, [jobDescription, intensity, style]);
 
-  // Fit scale for A4 in preview pane
+  // Fit scale for A4 in preview pane (desktop fixed paper)
   useEffect(() => {
     const el = previewPaneRef.current;
     if (!el) return;
@@ -210,6 +212,14 @@ export function Workspace({ userName, userEmail }: Props) {
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
+  }, [mobileTab, viewMode]);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const apply = () => setIsNarrow(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
   }, []);
 
   function adoptParsed(parsed: StructuredResume, text?: string) {
@@ -377,9 +387,10 @@ export function Workspace({ userName, userEmail }: Props) {
         });
       }
       setViewMode("tailored");
+      setCompareSide("tailored");
       unlock(5);
       setStep(5);
-      setMobileTab("preview");
+      setMobileTab(isNarrow ? "workspace" : "preview");
     } catch (err) {
       setError(err instanceof Error ? err.message : "We couldn't finish tailoring.");
     } finally {
@@ -863,16 +874,6 @@ export function Workspace({ userName, userEmail }: Props) {
               </div>
 
               <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                <button
-                  type="button"
-                  disabled={!!busy}
-                  onClick={() => tailor(intensity)}
-                  className="h-12 w-full rounded-lg bg-[var(--alfred-amber)] px-6 text-sm font-semibold text-[var(--bg)] disabled:opacity-50 sm:h-11 sm:w-auto"
-                >
-                  {busy === "tailor"
-                    ? "Tailoring…"
-                    : `Tailor with ${TAILOR_INTENSITY_META[intensity].label}`}
-                </button>
                 {hasTailored ? (
                   <button
                     type="button"
@@ -882,8 +883,14 @@ export function Workspace({ userName, userEmail }: Props) {
                   >
                     Reset to original
                   </button>
-                ) : null}
+                ) : (
+                  <p className="text-xs text-[var(--text-muted)] sm:hidden">
+                    Use the button below to tailor.
+                  </p>
+                )}
               </div>
+              {/* Spacer so sticky CTA does not cover style controls */}
+              <div className="h-16 sm:h-4" aria-hidden />
             </section>
           ) : null}
 
@@ -1009,30 +1016,46 @@ export function Workspace({ userName, userEmail }: Props) {
         {/* Preview column */}
         <aside
           className={`flex min-h-0 flex-col border-[var(--border)] bg-[var(--elevated)]/40 lg:sticky lg:top-[57px] lg:h-[calc(100vh-57px)] lg:overflow-hidden lg:border-l ${
-            mobileTab === "workspace" ? "hidden lg:flex" : "flex min-h-[calc(100dvh-12rem)]"
+            mobileTab === "workspace"
+              ? "hidden lg:flex"
+              : "flex h-[calc(100dvh-11.5rem)] max-h-[calc(100dvh-11.5rem)]"
           }`}
         >
           <PreviewToolbar
             viewMode={viewMode}
-            onViewMode={setViewMode}
+            onViewMode={(m) => {
+              setViewMode(m);
+              if (m === "compare") setCompareSide("tailored");
+            }}
             zoom={zoom}
             onZoom={setZoom}
+            compact={isNarrow}
+            hideZoom={isNarrow}
           />
           <div
             ref={previewPaneRef}
-            className="flex-1 overflow-x-auto overflow-y-auto p-3 pb-safe sm:p-4"
+            className={`flex-1 overflow-x-auto overflow-y-auto p-3 sm:p-4 ${
+              step === 5 && isNarrow ? "pb-24" : "pb-safe"
+            }`}
           >
             {!hasSource ? (
               <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-[var(--border)] text-sm text-[var(--text-muted)]">
                 Upload a resume to preview
               </div>
             ) : viewMode === "original" ? (
-              <ResumePaper resume={sourceResume} style={style} label="Original" scale={paperScale} />
+              <ResumePaper
+                resume={sourceResume}
+                style={style}
+                label="Original"
+                scale={paperScale}
+                fluid={isNarrow}
+              />
             ) : viewMode === "tailored" ? (
               <ResumePaper
                 resume={resume}
                 style={style}
                 scale={paperScale}
+                fluid={isNarrow}
                 label={
                   appliedIntensity
                     ? `Tailored · ${TAILOR_INTENSITY_META[appliedIntensity].label}`
@@ -1040,24 +1063,62 @@ export function Workspace({ userName, userEmail }: Props) {
                 }
               />
             ) : viewMode === "compare" ? (
-              <div className="flex flex-col gap-6 xl:flex-row xl:justify-center">
-                <ResumePaper
-                  resume={sourceResume}
-                  style={style}
-                  label="Original"
-                  scale={Math.min(paperScale, 0.55)}
-                />
-                <ResumePaper
-                  resume={resume}
-                  style={style}
-                  scale={Math.min(paperScale, 0.55)}
-                  label={
-                    appliedIntensity
-                      ? `Tailored · ${TAILOR_INTENSITY_META[appliedIntensity].label}`
-                      : "Tailored"
-                  }
-                />
-              </div>
+              isNarrow ? (
+                <div className="space-y-3">
+                  <div className="flex rounded-lg border border-[var(--border)] bg-[var(--surface)] p-0.5">
+                    {(
+                      [
+                        ["original", "Original"],
+                        ["tailored", "Tailored"],
+                      ] as const
+                    ).map(([side, label]) => (
+                      <button
+                        key={side}
+                        type="button"
+                        onClick={() => setCompareSide(side)}
+                        className={`min-h-10 flex-1 rounded-md text-sm font-medium transition ${
+                          compareSide === side
+                            ? "bg-[var(--elevated)] text-[var(--text)]"
+                            : "text-[var(--text-muted)]"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <ResumePaper
+                    resume={compareSide === "original" ? sourceResume : resume}
+                    style={style}
+                    fluid
+                    label={
+                      compareSide === "original"
+                        ? "Original"
+                        : appliedIntensity
+                          ? `Tailored · ${TAILOR_INTENSITY_META[appliedIntensity].label}`
+                          : "Tailored"
+                    }
+                  />
+                </div>
+              ) : (
+                <div className="flex flex-col gap-6 xl:flex-row xl:justify-center">
+                  <ResumePaper
+                    resume={sourceResume}
+                    style={style}
+                    label="Original"
+                    scale={Math.min(paperScale, 0.55)}
+                  />
+                  <ResumePaper
+                    resume={resume}
+                    style={style}
+                    scale={Math.min(paperScale, 0.55)}
+                    label={
+                      appliedIntensity
+                        ? `Tailored · ${TAILOR_INTENSITY_META[appliedIntensity].label}`
+                        : "Tailored"
+                    }
+                  />
+                </div>
+              )
             ) : (
               <EditPanel
                 resume={resume}
@@ -1070,30 +1131,61 @@ export function Workspace({ userName, userEmail }: Props) {
         </aside>
       </main>
 
+      {/* Single Tailor CTA — dynamic mode label only */}
       {hasSource && hasJd && unlockedThrough >= 4 && step === 4 && mobileTab === "workspace" ? (
-        <div className="sticky bottom-0 z-20 border-t border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur lg:block">
-          <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-3 px-3 py-3 pb-safe sm:px-4 lg:px-8">
-            <p className="hidden text-xs text-[var(--text-muted)] sm:block">
-              {TAILOR_INTENSITY_META[intensity].label} · Ready
-            </p>
+        <div className="sticky bottom-0 z-20 border-t border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur">
+          <div className="mx-auto flex max-w-[1440px] px-3 py-3 pb-safe sm:px-4 lg:justify-end lg:px-8">
             <button
               type="button"
               disabled={!!busy}
               onClick={() => tailor(intensity)}
-              className="h-12 w-full rounded-lg bg-[var(--alfred-amber)] px-5 text-sm font-semibold text-[var(--bg)] disabled:opacity-50 sm:h-10 sm:w-auto"
+              className="h-12 w-full rounded-lg bg-[var(--alfred-amber)] px-5 text-sm font-semibold text-[var(--bg)] disabled:opacity-50 sm:h-11 lg:w-auto"
             >
-              Tailor Resume →
+              {busy === "tailor"
+                ? "Tailoring…"
+                : `Tailor with ${TAILOR_INTENSITY_META[intensity].label}`}
             </button>
           </div>
         </div>
       ) : null}
 
-      {/* Mobile floating jump to preview when resume exists */}
-      {hasSource && mobileTab === "workspace" && !(step === 4 && unlockedThrough >= 4) ? (
+      {/* Mobile Review: download while on Preview */}
+      {step === 5 && hasTailored && mobileTab === "preview" && isNarrow ? (
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur">
+          <div className="flex gap-2 px-3 py-3 pb-safe">
+            <button
+              type="button"
+              disabled={!!busy}
+              onClick={() => exportFile("pdf")}
+              className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-lg bg-[var(--alfred-amber)] text-sm font-semibold text-[var(--bg)] disabled:opacity-50"
+            >
+              <Download className="h-4 w-4" />
+              {busy === "pdf" ? "…" : "PDF"}
+            </button>
+            <button
+              type="button"
+              disabled={!!busy}
+              onClick={() => exportFile("docx")}
+              className="inline-flex h-12 flex-1 items-center justify-center rounded-lg border border-[var(--border)] text-sm disabled:opacity-50"
+            >
+              {busy === "docx" ? "…" : "DOCX"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileTab("workspace")}
+              className="inline-flex h-12 items-center justify-center rounded-lg border border-[var(--border)] px-3 text-sm"
+            >
+              More
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {hasSource && mobileTab === "workspace" && step !== 4 ? (
         <button
           type="button"
           onClick={() => setMobileTab("preview")}
-          className="fixed bottom-5 right-3 z-30 inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2.5 text-xs font-medium text-[var(--text)] shadow-[var(--shadow)] pb-safe lg:hidden"
+          className="fixed bottom-5 right-3 z-30 inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2.5 text-xs font-medium text-[var(--text)] shadow-[var(--shadow)] lg:hidden"
         >
           <Eye className="h-3.5 w-3.5 text-[var(--alfred-amber)]" />
           Preview
