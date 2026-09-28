@@ -17,11 +17,11 @@ const mono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Alfred Terminal — AI Resume Tailoring & Cover Letters",
   description:
-    "Tailor your resume to specific job descriptions and generate relevant cover letters. ATS-friendly, fact-focused, and built for modern job seekers.",
+    "Tailor your resume to specific job descriptions and generate relevant cover letters. ATS-friendly and built for modern job seekers.",
   openGraph: {
     title: "Alfred Terminal — Your Career, Intelligently Optimized",
     description:
-      "Tailor your resume to the job. Generate a relevant cover letter. Keep every fact true.",
+      "Tailor your resume to the job. Generate a relevant cover letter. Download PDF or DOCX.",
   },
 };
 

@@ -77,12 +77,12 @@ export function buildOptimizationPlan(input: {
 
   const priorities: string[] = [];
   if (distance === "hard") {
-    priorities.push("Reframe support operations language toward product / engineering adjacency");
+    priorities.push("Reframe experience language toward the target role");
     priorities.push("Lead with requirements clarification, SLA reliability, and cross-team coordination");
-    priorities.push("Never invent programming languages, frameworks, or metrics");
+    priorities.push("Maximize keyword and skills overlap with the job description");
   } else {
-    priorities.push("Promote evidenced JD tools and terminology");
-    priorities.push("Reorder skills and bullets for ATS overlap");
+    priorities.push("Promote JD tools and terminology");
+    priorities.push("Reorder skills and bullets for strong overlap");
   }
   for (const t of themes.slice(0, 4)) priorities.push(`Align language toward: ${t}`);
   for (const e of evidenced.slice(0, 4)) priorities.push(`Emphasize evidenced tool: ${e}`);
@@ -125,6 +125,13 @@ export function planToHumanAnalysis(plan: OptimizationPlan): {
   strongMatches: string[];
   needsAttention: string[];
   opportunities: string[];
+  targetRole: string;
+  distance: OptimizationPlan["distance"];
+  evidencedTools: string[];
+  missingTools: string[];
+  sectionsToModify: string[];
+  sectionsToPreserve: string[];
+  requirementStatuses: OptimizationPlan["requirementStatuses"];
 } {
   return {
     strongMatches: plan.requirementStatuses
@@ -139,6 +146,15 @@ export function planToHumanAnalysis(plan: OptimizationPlan): {
           : `${r.requirement} not found on resume`,
       )
       .slice(0, 8),
-    opportunities: plan.priorities.slice(0, 6),
+    opportunities: plan.priorities
+      .filter((p) => !/never invent/i.test(p))
+      .slice(0, 6),
+    targetRole: plan.targetRole,
+    distance: plan.distance,
+    evidencedTools: plan.evidencedTools.slice(0, 12),
+    missingTools: plan.missingTools.slice(0, 12),
+    sectionsToModify: plan.sectionsToModify,
+    sectionsToPreserve: plan.sectionsToPreserve,
+    requirementStatuses: plan.requirementStatuses,
   };
 }

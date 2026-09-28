@@ -73,18 +73,18 @@ export async function buildCoverLetter(
     resumeDomain,
   });
 
-  if (entitlements.claudeWriter) {
-    const claude = await writeCoverLetterWithClaude(
+  if (entitlements.aiWriter) {
+    const aiLetter = await writeCoverLetterWithClaude(
       resume,
       plan,
       jobDescription,
       strategy as unknown as Record<string, string>,
     );
-    if (claude) {
-      thinking.push("Writer: Claude.");
-      return { letter: claude, thinking, strategy };
+    if (aiLetter) {
+      thinking.push("Writer: AI (OpenRouter/Anthropic).");
+      return { letter: aiLetter, thinking, strategy };
     }
-    thinking.push("Claude cover unavailable — deterministic strategy letter.");
+    thinking.push("AI cover unavailable — deterministic strategy letter.");
   }
 
   const letter = renderDeterministicLetter(resume, strategy, intensity, analyzed);

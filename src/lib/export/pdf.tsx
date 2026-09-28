@@ -137,7 +137,7 @@ function ResumeDocument({
       author={resume.contact.fullName}
       subject="ATS Resume"
     >
-      <Page size="LETTER" style={styles.page}>
+      <Page size="A4" style={styles.page}>
         <Text style={styles.name}>{resume.contact.fullName.toUpperCase()}</Text>
         {showHeadline ? <Text style={styles.headline}>{resume.headline}</Text> : null}
         <ContactLine resume={resume} styles={styles} />
@@ -279,7 +279,7 @@ export async function buildCoverLetterPdfBuffer(
 
   const doc = (
     <Document title={`${authorName} Cover Letter`} author={authorName}>
-      <Page size="LETTER" style={styles.page}>
+      <Page size="A4" style={styles.page}>
         {paragraphs.map((block, i) => (
           <Text key={i} style={styles.para}>
             {block}

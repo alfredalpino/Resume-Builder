@@ -29,11 +29,13 @@ export async function POST(req: Request) {
       : "medium";
 
     const source = StructuredResumeSchema.parse(body.resume);
+    const analyzeOnly = Boolean(body.analyzeOnly);
     const result = await runAlfredPipeline(
       source,
       jobDescription,
       intensity,
       session?.user?.email,
+      { analyzeOnly },
     );
     const tailored = result.resume;
 
@@ -55,6 +57,16 @@ export async function POST(req: Request) {
       intensity: result.intensity,
       headlineParts: result.headlineParts,
       humanAnalysis: result.humanAnalysis,
+      plan: {
+        targetRole: result.plan.targetRole,
+        distance: result.plan.distance,
+        evidencedTools: result.plan.evidencedTools,
+        missingTools: result.plan.missingTools,
+        sectionsToModify: result.plan.sectionsToModify,
+        sectionsToPreserve: result.plan.sectionsToPreserve,
+        requirementStatuses: result.plan.requirementStatuses,
+        priorities: result.plan.priorities,
+      },
       entitlements: result.entitlements,
       analysis: {
         titleHints: result.analysis.titleHints,

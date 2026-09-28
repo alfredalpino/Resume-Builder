@@ -6,7 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type Dispatch,
   type SetStateAction,
 } from "react";
@@ -17,7 +16,6 @@ import {
   ChevronDown,
   Download,
   FileText,
-  Lock,
   RefreshCw,
   Upload,
 } from "lucide-react";
@@ -29,12 +27,14 @@ import {
   ProgressStepper,
   type WorkflowStepId,
 } from "@/components/app-shell/progress-stepper";
-import { TAILOR_INTENSITY_META, type TailorIntensity } from "@/lib/center";
+import { AnalysisPanel, type AnalysisPayload } from "@/components/analysis/AnalysisPanel";
+import { ResumePaper, A4_WIDTH_PX } from "@/components/preview/ResumePaper";
 import {
-  DEFAULT_RESUME_STYLE,
-  previewFontFamily,
-  type ResumeStyle,
-} from "@/lib/style";
+  PreviewToolbar,
+  type PreviewZoom,
+} from "@/components/preview/PreviewToolbar";
+import { TAILOR_INTENSITY_META, type TailorIntensity } from "@/lib/center";
+import { DEFAULT_RESUME_STYLE, type ResumeStyle } from "@/lib/style";
 
 type Props = {
   userName?: string | null;
@@ -42,13 +42,8 @@ type Props = {
 };
 
 type ViewMode = "original" | "tailored" | "compare" | "edit";
-type DocTab = "resume" | "cover";
 
-type HumanAnalysis = {
-  strongMatches: string[];
-  needsAttention: string[];
-  opportunities: string[];
-};
+const DRAFT_KEY = "alfred-terminal-draft-v1";
 
 async function readError(res: Response): Promise<string> {
   try {
@@ -68,131 +63,10 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-function ResumePaper({
-  resume,
-  style,
-  label,
-}: {
-  resume: StructuredResume;
-  style: ResumeStyle;
-  label?: string;
-}) {
-  const css: CSSProperties = {
-    fontFamily: previewFontFamily(style),
-    fontSize: `${style.fontSize}px`,
-    lineHeight: 1.45,
-  };
-  const showHeadline = style.showHeadline && Boolean(resume.headline?.trim());
-
-  return (
-    <article
-      style={css}
-      className="mx-auto max-h-[min(72vh,820px)] w-full max-w-[640px] overflow-auto rounded-sm bg-[var(--paper)] p-8 text-[var(--paper-text)] shadow-[var(--shadow)]"
-    >
-      {label ? (
-        <p
-          className="mb-2 text-center text-[10px] font-semibold uppercase tracking-wider text-[var(--alfred-amber)]"
-          style={{ fontSize: Math.max(8, style.fontSize - 1) }}
-        >
-          {label}
-        </p>
-      ) : null}
-      <h1
-        className="text-center font-bold tracking-wide"
-        style={{ fontSize: style.fontSize + 7 }}
-      >
-        {resume.contact.fullName.toUpperCase()}
-      </h1>
-      {showHeadline ? (
-        <p className="mt-1 text-center font-semibold" style={{ fontSize: style.fontSize + 0.5 }}>
-          {resume.headline}
-        </p>
-      ) : null}
-      <p className="mt-1 text-center opacity-70" style={{ fontSize: Math.max(8, style.fontSize - 1) }}>
-        {[resume.contact.location, resume.contact.email, resume.contact.phone]
-          .filter(Boolean)
-          .join("  ·  ")}
-      </p>
-      {resume.summary ? (
-        <>
-          <h3 className="mt-4 border-b border-black/80 pb-0.5 font-bold uppercase tracking-wide">
-            Professional Summary
-          </h3>
-          <p className="mt-1 text-justify">{resume.summary}</p>
-        </>
-      ) : null}
-      {resume.skills.length ? (
-        <>
-          <h3 className="mt-3 border-b border-black/80 pb-0.5 font-bold uppercase tracking-wide">
-            Skills
-          </h3>
-          {resume.skills.map((g) => (
-            <p key={g.category} className="mt-1">
-              <strong>{g.category}: </strong>
-              {g.items.join(" · ")}
-            </p>
-          ))}
-        </>
-      ) : null}
-      {resume.experience.length ? (
-        <>
-          <h3 className="mt-3 border-b border-black/80 pb-0.5 font-bold uppercase tracking-wide">
-            Experience
-          </h3>
-          {resume.experience.map((job, idx) => (
-            <div key={`${job.company}-${idx}`} className="mt-1.5">
-              <p className="font-bold">
-                {job.company} — {job.title}
-              </p>
-              <p className="opacity-60" style={{ fontSize: Math.max(8, style.fontSize - 1) }}>
-                {job.start} – {job.end}
-                {job.location ? `  ·  ${job.location}` : ""}
-              </p>
-              <ul className="mt-0.5 pl-2">
-                {job.bullets.map((b, i) => (
-                  <li key={i}>• {b}</li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </>
-      ) : null}
-      {resume.projects.length ? (
-        <>
-          <h3 className="mt-3 border-b border-black/80 pb-0.5 font-bold uppercase tracking-wide">
-            Projects
-          </h3>
-          {resume.projects.map((p, idx) => (
-            <div key={`${p.name}-${idx}`} className="mt-1.5">
-              <p className="font-bold">{p.name}</p>
-              <ul className="pl-2">
-                {p.bullets.map((b, i) => (
-                  <li key={i}>• {b}</li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </>
-      ) : null}
-      {resume.education.length ? (
-        <>
-          <h3 className="mt-3 border-b border-black/80 pb-0.5 font-bold uppercase tracking-wide">
-            Education
-          </h3>
-          {resume.education.map((e, idx) => {
-            const same = e.degree.trim().toLowerCase() === e.school.trim().toLowerCase();
-            return (
-              <p key={`${e.school}-${idx}`} className="mt-1">
-                {same ? e.degree : `${e.degree} — ${e.school}`}
-                {e.dates ? `  ·  ${e.dates}` : ""}
-                {e.details ? `  ·  ${e.details}` : ""}
-              </p>
-            );
-          })}
-        </>
-      ) : null}
-    </article>
-  );
+function recommendIntensity(distance?: AnalysisPayload["distance"]): TailorIntensity {
+  if (distance === "hard") return "hard";
+  if (distance === "adjacent") return "medium";
+  return "subtle";
 }
 
 export function Workspace({ userName, userEmail }: Props) {
@@ -209,16 +83,21 @@ export function Workspace({ userName, userEmail }: Props) {
   const [appliedIntensity, setAppliedIntensity] = useState<TailorIntensity | null>(null);
   const [style, setStyle] = useState<ResumeStyle>(DEFAULT_RESUME_STYLE);
   const [viewMode, setViewMode] = useState<ViewMode>("tailored");
-  const [docTab, setDocTab] = useState<DocTab>("resume");
   const [coverLetter, setCoverLetter] = useState("");
   const [copied, setCopied] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
   const [step, setStep] = useState<WorkflowStepId>(1);
   const [unlockedThrough, setUnlockedThrough] = useState<WorkflowStepId>(1);
-  const [humanAnalysis, setHumanAnalysis] = useState<HumanAnalysis | null>(null);
+  const [humanAnalysis, setHumanAnalysis] = useState<AnalysisPayload | null>(null);
   const [mobileTab, setMobileTab] = useState<"workspace" | "preview">("workspace");
+  const [zoom, setZoom] = useState<PreviewZoom>("fit");
+  const [fitScale, setFitScale] = useState(0.55);
+  const [draftStatus, setDraftStatus] = useState<string | null>(null);
+  const [processStep, setProcessStep] = useState<string | null>(null);
   const scoreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const previewPaneRef = useRef<HTMLDivElement | null>(null);
+  const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hasSource = useMemo(
     () => sourceResume.contact.fullName !== "Your Name" || Boolean(sourceResume.summary),
@@ -231,6 +110,9 @@ export function Workspace({ userName, userEmail }: Props) {
     const t = [sourceResume.summary, ...sourceResume.experience.flatMap((j) => j.bullets)].join(" ");
     return t.trim() ? t.trim().split(/\s+/).length : 0;
   }, [sourceResume]);
+
+  const paperScale = zoom === "fit" ? fitScale : zoom;
+  const recommended = recommendIntensity(humanAnalysis?.distance);
 
   function unlock(to: WorkflowStepId) {
     setUnlockedThrough((u) => (to > u ? to : u));
@@ -273,6 +155,58 @@ export function Workspace({ userName, userEmail }: Props) {
     }
   }, [hasSource, hasJd, unlockedThrough]);
 
+  // Restore draft
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw) as {
+        jobDescription?: string;
+        intensity?: TailorIntensity;
+        style?: ResumeStyle;
+      };
+      if (d.jobDescription) setJobDescription(d.jobDescription);
+      if (d.intensity) setIntensity(d.intensity);
+      if (d.style) setStyle({ ...DEFAULT_RESUME_STYLE, ...d.style });
+      setDraftStatus("Draft restored");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // Persist draft
+  useEffect(() => {
+    if (draftTimer.current) clearTimeout(draftTimer.current);
+    draftTimer.current = setTimeout(() => {
+      try {
+        localStorage.setItem(
+          DRAFT_KEY,
+          JSON.stringify({ jobDescription, intensity, style, savedAt: Date.now() }),
+        );
+        setDraftStatus("Saved just now");
+      } catch {
+        /* ignore */
+      }
+    }, 800);
+    return () => {
+      if (draftTimer.current) clearTimeout(draftTimer.current);
+    };
+  }, [jobDescription, intensity, style]);
+
+  // Fit scale for A4 in preview pane
+  useEffect(() => {
+    const el = previewPaneRef.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.clientWidth - 32;
+      if (w > 0) setFitScale(Math.min(1, Math.max(0.35, w / A4_WIDTH_PX)));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   function adoptParsed(parsed: StructuredResume, text?: string) {
     setSourceResume(structuredClone(parsed));
     setResume(parsed);
@@ -289,6 +223,7 @@ export function Workspace({ userName, userEmail }: Props) {
   async function onFileChange(file: File | null) {
     if (!file) return;
     setBusy("parse");
+    setProcessStep("Parsing resume file");
     setError(null);
     setFileName(file.name);
     try {
@@ -302,6 +237,7 @@ export function Workspace({ userName, userEmail }: Props) {
       setError(err instanceof Error ? err.message : "We couldn't read this file.");
     } finally {
       setBusy(null);
+      setProcessStep(null);
     }
   }
 
@@ -311,6 +247,7 @@ export function Workspace({ userName, userEmail }: Props) {
       return;
     }
     setBusy("parse");
+    setProcessStep("Parsing pasted text");
     setError(null);
     try {
       const res = await fetch("/api/parse", {
@@ -326,6 +263,7 @@ export function Workspace({ userName, userEmail }: Props) {
       setError(err instanceof Error ? err.message : "We couldn't parse that text.");
     } finally {
       setBusy(null);
+      setProcessStep(null);
     }
   }
 
@@ -350,10 +288,11 @@ export function Workspace({ userName, userEmail }: Props) {
     }
     setBusy("analyze");
     setError(null);
+    setProcessStep("Mapping experience to the role");
     startProgress();
     try {
       await liveScore(sourceResume, jobDescription);
-      // Lightweight analysis pass via tailor subtle to get humanAnalysis structure without heavy rewrite
+      setProcessStep("Scoring role alignment");
       const res = await fetch("/api/tailor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -361,15 +300,24 @@ export function Workspace({ userName, userEmail }: Props) {
           resume: sourceResume,
           jobDescription,
           intensity: "subtle",
+          analyzeOnly: true,
         }),
       });
       if (!res.ok) throw new Error(await readError(res));
       const data = (await res.json()) as {
         score: AtsScore;
-        humanAnalysis?: HumanAnalysis;
+        humanAnalysis?: AnalysisPayload;
+        plan?: AnalysisPayload;
       };
       setScore(data.score);
-      setHumanAnalysis(data.humanAnalysis || null);
+      const ha = data.humanAnalysis || null;
+      if (ha && data.plan) {
+        setHumanAnalysis({ ...ha, ...data.plan });
+      } else {
+        setHumanAnalysis(ha);
+      }
+      const dist = ha?.distance || data.plan?.distance;
+      setIntensity(recommendIntensity(dist));
       unlock(4);
       setStep(3);
     } catch (err) {
@@ -377,6 +325,7 @@ export function Workspace({ userName, userEmail }: Props) {
     } finally {
       stopProgress();
       setBusy(null);
+      setProcessStep(null);
     }
   }
 
@@ -393,6 +342,7 @@ export function Workspace({ userName, userEmail }: Props) {
     setError(null);
     setIntensity(nextIntensity);
     setStep(4);
+    setProcessStep("Optimizing resume for the role");
     startProgress();
     try {
       const res = await fetch("/api/tailor", {
@@ -409,12 +359,18 @@ export function Workspace({ userName, userEmail }: Props) {
         resume: StructuredResume;
         score: AtsScore;
         intensity?: TailorIntensity;
-        humanAnalysis?: HumanAnalysis;
+        humanAnalysis?: AnalysisPayload;
+        plan?: AnalysisPayload;
       };
       setResume(data.resume);
       setScore(data.score);
       setAppliedIntensity(data.intensity || nextIntensity);
-      if (data.humanAnalysis) setHumanAnalysis(data.humanAnalysis);
+      if (data.humanAnalysis) {
+        setHumanAnalysis({
+          ...data.humanAnalysis,
+          ...(data.plan || {}),
+        });
+      }
       setViewMode("tailored");
       unlock(5);
       setStep(5);
@@ -424,6 +380,7 @@ export function Workspace({ userName, userEmail }: Props) {
     } finally {
       stopProgress();
       setBusy(null);
+      setProcessStep(null);
     }
   }
 
@@ -434,7 +391,7 @@ export function Workspace({ userName, userEmail }: Props) {
     }
     setBusy("cover");
     setError(null);
-    setDocTab("cover");
+    setProcessStep("Writing cover letter");
     startProgress();
     try {
       const res = await fetch("/api/cover-letter", {
@@ -454,6 +411,7 @@ export function Workspace({ userName, userEmail }: Props) {
     } finally {
       stopProgress();
       setBusy(null);
+      setProcessStep(null);
     }
   }
 
@@ -551,7 +509,7 @@ export function Workspace({ userName, userEmail }: Props) {
               Alfred Terminal
             </p>
             <p className="hidden text-[10px] text-[var(--text-muted)] sm:block">
-              Tailored to the job. True to you.
+              Your career, intelligently optimized.
             </p>
           </div>
 
@@ -562,6 +520,11 @@ export function Workspace({ userName, userEmail }: Props) {
           />
 
           <div className="flex shrink-0 items-center gap-2">
+            {draftStatus ? (
+              <span className="hidden text-[10px] text-[var(--text-muted)] md:inline">
+                {draftStatus}
+              </span>
+            ) : null}
             <Link
               href="/coffee"
               className="hidden text-sm text-[var(--text-secondary)] hover:text-[var(--alfred-amber)] sm:inline"
@@ -586,13 +549,15 @@ export function Workspace({ userName, userEmail }: Props) {
           </div>
         )}
         {processLabel ? (
-          <p className="px-4 py-1.5 font-mono text-[11px] text-[var(--alfred-amber)] lg:px-8">
-            {processLabel}
-          </p>
+          <div className="space-y-0.5 px-4 py-1.5 lg:px-8">
+            <p className="font-mono text-[11px] text-[var(--alfred-amber)]">{processLabel}</p>
+            {processStep ? (
+              <p className="font-mono text-[10px] text-[var(--text-muted)]">→ {processStep}</p>
+            ) : null}
+          </div>
         ) : null}
       </header>
 
-      {/* Mobile tabs */}
       <div className="flex border-b border-[var(--border)] lg:hidden">
         {(["workspace", "preview"] as const).map((t) => (
           <button
@@ -610,9 +575,9 @@ export function Workspace({ userName, userEmail }: Props) {
         ))}
       </div>
 
-      <main className="mx-auto grid w-full max-w-[1440px] flex-1 gap-0 lg:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
+      <main className="mx-auto grid w-full max-w-[1440px] flex-1 gap-0 lg:grid-cols-[minmax(0,1.1fr)_minmax(380px,0.9fr)]">
         <div
-          className={`min-w-0 space-y-8 overflow-y-auto px-4 py-6 lg:px-8 lg:py-8 ${
+          className={`min-w-0 space-y-8 overflow-y-auto px-4 py-6 lg:max-h-[calc(100vh-57px)] lg:px-8 lg:py-8 ${
             mobileTab === "preview" ? "hidden lg:block" : ""
           }`}
         >
@@ -628,7 +593,7 @@ export function Workspace({ userName, userEmail }: Props) {
           ) : null}
 
           {/* STEP 1 — Resume */}
-          {(step === 1 || (step <= 2 && !hasSource)) && (
+          {step === 1 || (step <= 2 && !hasSource) ? (
             <section>
               <h2 className="text-xl font-semibold tracking-tight">Resume</h2>
               <p className="mt-1 text-sm text-[var(--text-secondary)]">
@@ -675,9 +640,9 @@ export function Workspace({ userName, userEmail }: Props) {
                 ) : null}
               </div>
             </section>
-          )}
+          ) : null}
 
-          {hasSource ? (
+          {hasSource && step <= 2 ? (
             <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
               <FileText className="h-5 w-5 text-[var(--alfred-amber)]" />
               <div className="min-w-0 flex-1">
@@ -702,7 +667,7 @@ export function Workspace({ userName, userEmail }: Props) {
           ) : null}
 
           {/* STEP 2 — Job */}
-          {(step >= 2 || hasSource) && unlockedThrough >= 2 ? (
+          {step === 2 && unlockedThrough >= 2 ? (
             <section>
               <h2 className="text-xl font-semibold tracking-tight">Target job</h2>
               <p className="mt-1 text-sm text-[var(--text-secondary)]">
@@ -711,7 +676,7 @@ export function Workspace({ userName, userEmail }: Props) {
               <textarea
                 value={jobDescription}
                 onChange={(e) => setJobDescription(e.target.value)}
-                rows={10}
+                rows={12}
                 className="mt-4 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm leading-relaxed outline-none focus:border-[var(--alfred-amber)]"
                 placeholder="Paste the full job description…"
               />
@@ -723,7 +688,7 @@ export function Workspace({ userName, userEmail }: Props) {
                   <span>Need at least 40 characters</span>
                 )}
               </div>
-              {hasSource && hasJd && step <= 3 && !hasTailored ? (
+              {hasSource && hasJd ? (
                 <button
                   type="button"
                   disabled={!!busy}
@@ -737,108 +702,23 @@ export function Workspace({ userName, userEmail }: Props) {
           ) : null}
 
           {/* STEP 3 — Analysis */}
-          {step >= 3 && unlockedThrough >= 3 && (humanAnalysis || score) ? (
-            <section>
-              <h2 className="text-xl font-semibold tracking-tight">Application analysis</h2>
-              <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                We compared your experience with the role requirements.
-              </p>
-              <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-                  <p className="text-xs text-[var(--text-muted)]">Role alignment</p>
-                  <p className="mt-1 text-3xl font-semibold tabular-nums">
-                    {score?.matchRate ?? "—"}%
-                  </p>
-                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--elevated)]">
-                    <div
-                      className="h-full rounded-full bg-[var(--alfred-amber)]"
-                      style={{ width: `${score?.matchRate ?? 0}%` }}
-                    />
-                  </div>
-                </div>
-                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-                  <p className="text-xs text-[var(--text-muted)]">Supported skills</p>
-                  <p className="mt-1 text-3xl font-semibold tabular-nums">
-                    {score?.hits.length ?? 0}
-                    <span className="text-base font-normal text-[var(--text-muted)]">
-                      {" "}
-                      / {(score?.hits.length ?? 0) + (score?.missing.length ?? 0) || "—"}
-                    </span>
-                  </p>
-                </div>
-                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-                  <p className="text-xs text-[var(--text-muted)]">Needs attention</p>
-                  <p className="mt-1 text-3xl font-semibold tabular-nums">
-                    {score?.missing.length ?? humanAnalysis?.needsAttention.length ?? 0}
-                  </p>
-                </div>
-              </div>
-              {humanAnalysis ? (
-                <div className="mt-5 grid gap-4 md:grid-cols-3">
-                  <div>
-                    <p className="text-xs font-semibold text-[var(--success)]">Strong matches</p>
-                    <ul className="mt-2 space-y-1 text-sm text-[var(--text-secondary)]">
-                      {(humanAnalysis.strongMatches.length
-                        ? humanAnalysis.strongMatches
-                        : score?.hits.slice(0, 6) || []
-                      ).map((m) => (
-                        <li key={m}>✓ {m}</li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-[var(--warning)]">Needs attention</p>
-                    <ul className="mt-2 space-y-1 text-sm text-[var(--text-secondary)]">
-                      {(humanAnalysis.needsAttention.length
-                        ? humanAnalysis.needsAttention
-                        : (score?.missing || []).map((m) => `${m} not found on resume`)
-                      )
-                        .slice(0, 6)
-                        .map((m) => (
-                          <li key={m}>• {m}</li>
-                        ))}
-                    </ul>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-[var(--alfred-amber)]">Opportunities</p>
-                    <ul className="mt-2 space-y-1 text-sm text-[var(--text-secondary)]">
-                      {humanAnalysis.opportunities.slice(0, 5).map((m) => (
-                        <li key={m}>• {m}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              ) : null}
-              <p className="mt-3 text-xs text-[var(--text-muted)]">
-                Internal role-alignment metric — not a universal ATS score.
-              </p>
-              {unlockedThrough >= 4 && step === 3 ? (
-                <button
-                  type="button"
-                  onClick={() => setStep(4)}
-                  className="mt-5 h-11 rounded-lg bg-[var(--alfred-amber)] px-6 text-sm font-semibold text-[var(--bg)]"
-                >
-                  Continue to tailor
-                </button>
-              ) : null}
-            </section>
+          {step === 3 && unlockedThrough >= 3 && (humanAnalysis || score) ? (
+            <AnalysisPanel
+              score={score}
+              analysis={humanAnalysis}
+              recommended={recommended}
+              showContinue={unlockedThrough >= 4}
+              onContinue={() => setStep(4)}
+            />
           ) : null}
 
-          {/* STEP 4 — Tailor */}
-          {unlockedThrough >= 4 && (step === 4 || step === 5) ? (
+          {/* STEP 4 — Tailor only */}
+          {step === 4 && unlockedThrough >= 4 ? (
             <section>
               <h2 className="text-xl font-semibold tracking-tight">Tailor resume</h2>
               <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                Choose how aggressively Alfred should restructure around this role.
+                Choose how aggressively Alfred should optimize around this role.
               </p>
-              <div className="mt-3 flex items-start gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-xs text-[var(--text-secondary)]">
-                <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--alfred-amber)]" />
-                <p>
-                  <span className="font-medium text-[var(--text)]">Fact protection enabled.</span>{" "}
-                  Unsupported experience, certifications, companies, metrics, or technologies will
-                  not be invented.
-                </p>
-              </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                 {(["subtle", "medium", "hard"] as TailorIntensity[]).map((mode) => {
                   const meta = TAILOR_INTENSITY_META[mode];
@@ -848,7 +728,7 @@ export function Workspace({ userName, userEmail }: Props) {
                       key={mode}
                       type="button"
                       onClick={() => setIntensity(mode)}
-                      className={`rounded-xl border px-4 py-4 text-left transition ${
+                      className={`rounded-xl border px-4 py-4 text-left transition duration-150 ${
                         active
                           ? "border-[var(--alfred-amber)] bg-[var(--alfred-amber)]/10"
                           : "border-[var(--border)] bg-[var(--surface)] hover:border-[var(--border-hover)]"
@@ -862,6 +742,69 @@ export function Workspace({ userName, userEmail }: Props) {
                   );
                 })}
               </div>
+
+              <div className="mt-5 space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={style.showHeadline}
+                    onChange={(e) =>
+                      setStyle((s) => ({ ...s, showHeadline: e.target.checked }))
+                    }
+                  />
+                  Show headline under name
+                </label>
+                <div className="flex flex-wrap items-center gap-3 text-sm">
+                  <label className="flex items-center gap-2 text-[var(--text-secondary)]">
+                    Font
+                    <select
+                      className="rounded-lg border border-[var(--border)] bg-[var(--elevated)] px-2 py-1.5 text-sm text-[var(--text)]"
+                      value={style.fontFamily}
+                      onChange={(e) =>
+                        setStyle((s) => ({
+                          ...s,
+                          fontFamily: e.target.value as ResumeStyle["fontFamily"],
+                        }))
+                      }
+                    >
+                      <option value="helvetica">Helvetica</option>
+                      <option value="times">Times</option>
+                      <option value="courier">Courier</option>
+                    </select>
+                  </label>
+                  <div className="flex items-center gap-2 text-[var(--text-secondary)]">
+                    Size
+                    <button
+                      type="button"
+                      className="h-8 w-8 rounded-lg border border-[var(--border)]"
+                      onClick={() =>
+                        setStyle((s) => ({
+                          ...s,
+                          fontSize: Math.max(8, s.fontSize - 0.5),
+                        }))
+                      }
+                    >
+                      −
+                    </button>
+                    <span className="w-8 text-center tabular-nums text-[var(--text)]">
+                      {style.fontSize}
+                    </span>
+                    <button
+                      type="button"
+                      className="h-8 w-8 rounded-lg border border-[var(--border)]"
+                      onClick={() =>
+                        setStyle((s) => ({
+                          ...s,
+                          fontSize: Math.min(12, s.fontSize + 0.5),
+                        }))
+                      }
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div className="mt-5 flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -887,140 +830,119 @@ export function Workspace({ userName, userEmail }: Props) {
             </section>
           ) : null}
 
-          {/* STEP 5 — Review */}
+          {/* STEP 5 — Review + Cover Letter */}
           {step === 5 && hasTailored ? (
-            <section>
-              <h2 className="text-xl font-semibold tracking-tight">Your resume is ready.</h2>
-              <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                Tailored for this role while preserving your original experience.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-4 text-sm">
-                <span>
-                  Role alignment{" "}
-                  <strong className="text-[var(--alfred-amber)]">{score?.matchRate ?? "—"}%</strong>
-                </span>
-                <span className="text-[var(--success)]">Fact integrity ✓ Passed</span>
-                <span className="text-[var(--success)]">ATS-friendly structure ✓ Ready</span>
-              </div>
-              <div className="mt-5 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={!!busy}
-                  onClick={() => exportFile("pdf")}
-                  className="inline-flex h-11 items-center gap-2 rounded-lg bg-[var(--alfred-amber)] px-5 text-sm font-semibold text-[var(--bg)] disabled:opacity-50"
-                >
-                  <Download className="h-4 w-4" />
-                  {busy === "pdf" ? "Building…" : "Download PDF"}
-                </button>
-                <button
-                  type="button"
-                  disabled={!!busy}
-                  onClick={() => exportFile("docx")}
-                  className="inline-flex h-11 items-center gap-2 rounded-lg border border-[var(--border)] px-5 text-sm disabled:opacity-50"
-                >
-                  {busy === "docx" ? "Building…" : "Download DOCX"}
-                </button>
-                <button
-                  type="button"
-                  disabled={!!busy}
-                  onClick={() => tailor(intensity)}
-                  className="inline-flex h-11 items-center gap-2 rounded-lg border border-[var(--border)] px-4 text-sm disabled:opacity-50"
-                >
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  Regenerate
-                </button>
+            <section className="space-y-10">
+              <div>
+                <h2 className="text-xl font-semibold tracking-tight">Your resume is ready.</h2>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                  Optimized for this role. Review the preview, then download.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-4 text-sm">
+                  <span>
+                    Role alignment{" "}
+                    <strong className="text-[var(--alfred-amber)]">
+                      {score?.matchRate ?? "—"}%
+                    </strong>
+                  </span>
+                  <span className="text-[var(--success)]">ATS-friendly structure ✓ Ready</span>
+                </div>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={!!busy}
+                    onClick={() => exportFile("pdf")}
+                    className="inline-flex h-11 items-center gap-2 rounded-lg bg-[var(--alfred-amber)] px-5 text-sm font-semibold text-[var(--bg)] disabled:opacity-50"
+                  >
+                    <Download className="h-4 w-4" />
+                    {busy === "pdf" ? "Building…" : "Download PDF"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!!busy}
+                    onClick={() => exportFile("docx")}
+                    className="inline-flex h-11 items-center gap-2 rounded-lg border border-[var(--border)] px-5 text-sm disabled:opacity-50"
+                  >
+                    {busy === "docx" ? "Building…" : "Download DOCX"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!!busy}
+                    onClick={() => tailor(intensity)}
+                    className="inline-flex h-11 items-center gap-2 rounded-lg border border-[var(--border)] px-4 text-sm disabled:opacity-50"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Regenerate
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStep(4)}
+                    className="h-11 rounded-lg border border-[var(--border)] px-4 text-sm"
+                  >
+                    Change mode
+                  </button>
+                </div>
               </div>
 
-              <div className="mt-10 border-t border-[var(--border)] pt-8">
-                <div className="flex gap-4 border-b border-[var(--border)]">
-                  {(["resume", "cover"] as DocTab[]).map((t) => (
+              <div className="border-t border-[var(--border)] pt-8">
+                <h3 className="text-lg font-semibold tracking-tight">Cover letter</h3>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                  Make the application complete.
+                </p>
+                {!coverLetter ? (
+                  <div className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-6 py-10 text-center">
+                    <p className="mx-auto max-w-md text-sm text-[var(--text-secondary)]">
+                      Generate a role-specific cover letter from your tailored resume and target
+                      job description.
+                    </p>
                     <button
-                      key={t}
                       type="button"
-                      onClick={() => setDocTab(t)}
-                      className={`pb-2 text-sm capitalize ${
-                        docTab === t
-                          ? "border-b-2 border-[var(--alfred-amber)] font-medium text-[var(--alfred-amber)]"
-                          : "text-[var(--text-muted)]"
-                      }`}
+                      disabled={!!busy}
+                      onClick={generateCoverLetter}
+                      className="mt-5 h-11 rounded-lg bg-[var(--alfred-amber)] px-5 text-sm font-semibold text-[var(--bg)] disabled:opacity-50"
                     >
-                      {t === "resume" ? "Resume" : "Cover Letter"}
+                      {busy === "cover" ? "Writing…" : "Generate Cover Letter"}
                     </button>
-                  ))}
-                </div>
-                {docTab === "cover" ? (
-                  <div className="mt-5">
-                    {!coverLetter ? (
-                      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-6 py-10 text-center">
-                        <h3 className="text-lg font-medium">Make the application complete.</h3>
-                        <p className="mx-auto mt-2 max-w-md text-sm text-[var(--text-secondary)]">
-                          Generate a role-specific cover letter from your tailored resume and target
-                          job description.
-                        </p>
-                        <button
-                          type="button"
-                          disabled={!!busy}
-                          onClick={generateCoverLetter}
-                          className="mt-5 h-11 rounded-lg bg-[var(--alfred-amber)] px-5 text-sm font-semibold text-[var(--bg)] disabled:opacity-50"
-                        >
-                          {busy === "cover" ? "Writing…" : "Generate Cover Letter"}
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={copyCoverLetter}
-                            className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm"
-                          >
-                            {copied ? "Copied" : "Copy"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => exportCover("pdf")}
-                            className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm"
-                          >
-                            Download PDF
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => exportCover("docx")}
-                            className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm"
-                          >
-                            Download DOCX
-                          </button>
-                          <button
-                            type="button"
-                            onClick={generateCoverLetter}
-                            className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm"
-                          >
-                            Regenerate
-                          </button>
-                        </div>
-                        <textarea
-                          className="mt-4 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm leading-relaxed"
-                          rows={16}
-                          value={coverLetter}
-                          onChange={(e) => setCoverLetter(e.target.value)}
-                        />
-                      </>
-                    )}
                   </div>
                 ) : (
-                  <div className="mt-4 space-y-3 text-sm text-[var(--text-secondary)]">
-                    <p>Use the resume preview panel to switch Original / Tailored / Compare.</p>
-                    <label className="flex items-center gap-2 text-xs">
-                      <input
-                        type="checkbox"
-                        checked={style.showHeadline}
-                        onChange={(e) =>
-                          setStyle((s) => ({ ...s, showHeadline: e.target.checked }))
-                        }
-                      />
-                      Show headline under name
-                    </label>
-                  </div>
+                  <>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={copyCoverLetter}
+                        className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm"
+                      >
+                        {copied ? "Copied" : "Copy"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => exportCover("pdf")}
+                        className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm"
+                      >
+                        Download PDF
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => exportCover("docx")}
+                        className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm"
+                      >
+                        Download DOCX
+                      </button>
+                      <button
+                        type="button"
+                        onClick={generateCoverLetter}
+                        className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm"
+                      >
+                        Regenerate
+                      </button>
+                    </div>
+                    <textarea
+                      className="mt-4 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm leading-relaxed"
+                      rows={14}
+                      value={coverLetter}
+                      onChange={(e) => setCoverLetter(e.target.value)}
+                    />
+                  </>
                 )}
               </div>
             </section>
@@ -1033,38 +955,24 @@ export function Workspace({ userName, userEmail }: Props) {
             mobileTab === "workspace" ? "hidden lg:block" : ""
           }`}
         >
-          <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] px-4 py-3">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
-              Resume preview
-            </h2>
-            <div className="flex rounded-lg border border-[var(--border)] bg-[var(--surface)] p-0.5">
-              {(["original", "tailored", "compare", "edit"] as ViewMode[]).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setViewMode(m)}
-                  className={`rounded-md px-2 py-1 text-[11px] capitalize ${
-                    viewMode === m
-                      ? "bg-[var(--elevated)] text-[var(--text)]"
-                      : "text-[var(--text-muted)]"
-                  }`}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="p-4">
+          <PreviewToolbar
+            viewMode={viewMode}
+            onViewMode={setViewMode}
+            zoom={zoom}
+            onZoom={setZoom}
+          />
+          <div ref={previewPaneRef} className="overflow-x-auto p-4">
             {!hasSource ? (
               <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-[var(--border)] text-sm text-[var(--text-muted)]">
                 Upload a resume to preview
               </div>
             ) : viewMode === "original" ? (
-              <ResumePaper resume={sourceResume} style={style} label="Original" />
+              <ResumePaper resume={sourceResume} style={style} label="Original" scale={paperScale} />
             ) : viewMode === "tailored" ? (
               <ResumePaper
                 resume={resume}
                 style={style}
+                scale={paperScale}
                 label={
                   appliedIntensity
                     ? `Tailored · ${TAILOR_INTENSITY_META[appliedIntensity].label}`
@@ -1072,11 +980,17 @@ export function Workspace({ userName, userEmail }: Props) {
                 }
               />
             ) : viewMode === "compare" ? (
-              <div className="space-y-4">
-                <ResumePaper resume={sourceResume} style={style} label="Original" />
+              <div className="flex flex-col gap-6 xl:flex-row xl:justify-center">
+                <ResumePaper
+                  resume={sourceResume}
+                  style={style}
+                  label="Original"
+                  scale={Math.min(paperScale, 0.55)}
+                />
                 <ResumePaper
                   resume={resume}
                   style={style}
+                  scale={Math.min(paperScale, 0.55)}
                   label={
                     appliedIntensity
                       ? `Tailored · ${TAILOR_INTENSITY_META[appliedIntensity].label}`
@@ -1096,12 +1010,11 @@ export function Workspace({ userName, userEmail }: Props) {
         </aside>
       </main>
 
-      {/* Sticky action bar */}
       {hasSource && hasJd && unlockedThrough >= 4 && step === 4 ? (
         <div className="sticky bottom-0 z-20 border-t border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur">
           <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-3 px-4 py-3 lg:px-8">
             <p className="text-xs text-[var(--text-muted)]">
-              {TAILOR_INTENSITY_META[intensity].label} · Fact protection on
+              {TAILOR_INTENSITY_META[intensity].label} · Ready
             </p>
             <button
               type="button"
@@ -1133,7 +1046,10 @@ function EditPanel({
   setError: (v: string | null) => void;
 }) {
   return (
-    <div className="grid gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+    <div className="mx-auto grid max-w-xl gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+        Edit resume
+      </p>
       {(
         [
           ["fullName", "Full name"],
@@ -1146,9 +1062,7 @@ function EditPanel({
           key={field}
           className="rounded-lg border border-[var(--border)] bg-[var(--elevated)] px-3 py-2 text-sm"
           value={
-            field === "location"
-              ? resume.contact.location || ""
-              : resume.contact[field]
+            field === "location" ? resume.contact.location || "" : resume.contact[field]
           }
           onChange={(e) => updateContactField(field, e.target.value)}
           placeholder={ph}
@@ -1168,18 +1082,44 @@ function EditPanel({
         placeholder="Summary"
       />
       <textarea
-        className="rounded-lg border border-[var(--border)] bg-[var(--elevated)] px-3 py-2 font-mono text-xs"
-        rows={10}
-        value={JSON.stringify(resume, null, 2)}
+        className="rounded-lg border border-[var(--border)] bg-[var(--elevated)] px-3 py-2 text-sm"
+        rows={4}
+        value={resume.skills.map((g) => `${g.category}: ${g.items.join(", ")}`).join("\n")}
         onChange={(e) => {
-          try {
-            setResume(JSON.parse(e.target.value) as StructuredResume);
-            setError(null);
-          } catch {
-            setError("Invalid resume JSON");
-          }
+          const skills = e.target.value
+            .split("\n")
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .map((line) => {
+              const [cat, rest] = line.split(":");
+              return {
+                category: (cat || "Skills").trim(),
+                items: (rest || "")
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+              };
+            });
+          setResume((r) => ({ ...r, skills }));
         }}
+        placeholder={"Skills (one group per line)\nCore Competencies: React, TypeScript"}
       />
+      <details className="text-xs text-[var(--text-muted)]">
+        <summary className="cursor-pointer">Advanced JSON</summary>
+        <textarea
+          className="mt-2 w-full rounded-lg border border-[var(--border)] bg-[var(--elevated)] px-3 py-2 font-mono text-xs"
+          rows={10}
+          value={JSON.stringify(resume, null, 2)}
+          onChange={(e) => {
+            try {
+              setResume(JSON.parse(e.target.value) as StructuredResume);
+              setError(null);
+            } catch {
+              setError("Invalid resume JSON");
+            }
+          }}
+        />
+      </details>
     </div>
   );
 }

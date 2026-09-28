@@ -38,9 +38,9 @@ export default async function HomePage() {
         </h1>
         <p className="mt-6 max-w-lg text-base leading-relaxed text-[var(--text-secondary)]">
           Tailor your resume to the job you actually want. Generate a role-specific cover letter.
-          Keep every fact true.
+          Download ATS-ready PDF or DOCX in minutes.
         </p>
-        <p className="mt-3 text-sm text-[var(--text-muted)]">Tailored to the job. True to you.</p>
+        <p className="mt-3 text-sm text-[var(--text-muted)]">Tailored to the job. Built for candidates.</p>
         <div className="mt-10 flex flex-wrap items-center gap-3">
           <SignInButton />
           <a
@@ -55,8 +55,8 @@ export default async function HomePage() {
           <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
             <h2 className="text-lg font-medium text-[var(--text)]">Resume Tailor</h2>
             <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">
-              Upload your current resume and paste the job description. Alfred identifies what
-              matters for the role and restructures your resume—without inventing experience.
+              Upload your current resume and paste the job description. Alfred optimizes your
+              resume for the role with Subtle, Balanced, or Aggressive tailoring.
             </p>
           </div>
           <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">

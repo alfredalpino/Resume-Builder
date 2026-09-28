@@ -38,7 +38,7 @@ export const TAILOR_INTENSITY_META: Record<
   },
   hard: {
     label: "Aggressive",
-    blurb: "Maximum tailoring around the target role — still no invented experience.",
+    blurb: "Maximum tailoring around the target role. Restructure freely for the strongest fit.",
   },
 };
 

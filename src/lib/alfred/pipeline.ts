@@ -17,7 +17,7 @@ import {
 } from "@/lib/resume/optimizer-plan";
 import { validateTailoredResume } from "@/lib/resume/validate";
 import { polishResume } from "@/lib/resume/polish";
-import { claudeWriterAvailable, writeResumeWithClaude } from "@/lib/resume/writer-claude";
+import { aiWriterAvailable, writeResumeWithClaude } from "@/lib/resume/writer-claude";
 import { jevPostValidate, jevPreAnalyze } from "@/lib/jev/client";
 import { getEntitlements, type Entitlements } from "@/lib/billing/entitlements";
 
@@ -29,7 +29,7 @@ export type AlfredPipelineResult = {
   headlineParts: string[];
   plan: OptimizationPlan;
   humanAnalysis: ReturnType<typeof planToHumanAnalysis>;
-  writer: "deterministic" | "claude";
+  writer: "deterministic" | "ai";
   jev: { pre: boolean; post: boolean; notes: string[] };
   entitlements: Entitlements;
 };
@@ -46,12 +46,14 @@ function extractThemes(jd: string, analysis: JdAnalysis): string[] {
 
 /**
  * Alfred Terminal pipeline: plan → (Claude | deterministic) → validate → optional Jev post.
+ * Pass analyzeOnly to build plan + humanAnalysis without rewriting the resume.
  */
 export async function runAlfredPipeline(
   resume: StructuredResume,
   jobDescription: string,
   intensity: TailorIntensity = "medium",
   userEmail?: string | null,
+  options?: { analyzeOnly?: boolean },
 ): Promise<AlfredPipelineResult> {
   const entitlements = getEntitlements(userEmail);
   const effectiveIntensity = intensity;
@@ -89,28 +91,45 @@ export async function runAlfredPipeline(
     `Plan tone: ${plan.tone}.`,
   ];
 
+  const humanAnalysis = planToHumanAnalysis(plan);
+  const headlineParts = resume.headline
+    ? resume.headline.split(/\s*\|\s*/).map((s) => s.trim()).filter(Boolean)
+    : [];
+
+  if (options?.analyzeOnly) {
+    thinking.push("Mode: analyze only (no rewrite).");
+    return {
+      resume,
+      thinking,
+      analysis,
+      intensity: effectiveIntensity,
+      headlineParts,
+      plan,
+      humanAnalysis,
+      writer: "deterministic",
+      jev: { pre: false, post: false, notes: [] },
+      entitlements,
+    };
+  }
+
   const pre = await jevPreAnalyze({ resume, jobDescription, plan });
   thinking.push(...pre.confidenceNotes.map((n) => `Alfred: ${n}`));
 
-  let writer: "deterministic" | "claude" = "deterministic";
+  let writer: "deterministic" | "ai" = "deterministic";
   let tailored: StructuredResume;
 
-  // Claude is free for everyone when server key is configured
-  const useClaude =
-    entitlements.claudeWriter &&
-    claudeWriterAvailable() &&
-    (effectiveIntensity === "hard" || effectiveIntensity === "medium");
+  const useAi = entitlements.aiWriter && aiWriterAvailable();
 
-  if (useClaude) {
-    const claudeOut = await writeResumeWithClaude(resume, plan, jobDescription);
-    if (claudeOut) {
-      tailored = claudeOut;
-      writer = "claude";
-      thinking.push("Writer: Claude.");
+  if (useAi) {
+    const aiOut = await writeResumeWithClaude(resume, plan, jobDescription);
+    if (aiOut) {
+      tailored = aiOut;
+      writer = "ai";
+      thinking.push("Writer: AI (OpenRouter/Anthropic).");
     } else {
       const det = centerResumeForJd(resume, jobDescription, analysis, effectiveIntensity);
       tailored = det.resume;
-      thinking.push(...det.thinking, "Writer: deterministic (Claude unavailable).");
+      thinking.push(...det.thinking, "Writer: deterministic (AI unavailable).");
     }
   } else {
     const det = centerResumeForJd(resume, jobDescription, analysis, effectiveIntensity);
@@ -121,12 +140,7 @@ export async function runAlfredPipeline(
   let validation = validateTailoredResume(tailored, resume, plan);
   tailored = validation.resume;
   if (!validation.ok) {
-    thinking.push(`Validation issues: ${validation.issues.join("; ")}`);
-    // One deterministic regenerate pass
-    const retry = centerResumeForJd(resume, jobDescription, analysis, effectiveIntensity);
-    validation = validateTailoredResume(retry.resume, resume, plan);
-    tailored = validation.resume;
-    thinking.push("Regenerated after validation fail.");
+    thinking.push(`Polish notes: ${validation.issues.join("; ")}`);
   }
 
   const post = await jevPostValidate({
@@ -135,14 +149,8 @@ export async function runAlfredPipeline(
     jobDescription,
   });
   thinking.push(...post.confidenceNotes.map((n) => `Alfred: ${n}`));
-  if (post.available && !post.claimIntegrityOk) {
-    const safe = centerResumeForJd(resume, jobDescription, analysis, "medium");
-    tailored = polishResume(safe.resume);
-    thinking.push("Claim integrity failed — fell back to Medium deterministic.");
-  }
 
-  const humanAnalysis = planToHumanAnalysis(plan);
-  const headlineParts = tailored.headline
+  const outHeadline = tailored.headline
     ? tailored.headline.split(/\s*\|\s*/).map((s) => s.trim()).filter(Boolean)
     : [];
 
@@ -151,7 +159,7 @@ export async function runAlfredPipeline(
     thinking,
     analysis,
     intensity: effectiveIntensity,
-    headlineParts,
+    headlineParts: outHeadline,
     plan,
     humanAnalysis,
     writer,
