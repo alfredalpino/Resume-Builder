@@ -142,7 +142,7 @@ function extractNounPhrases(text: string): string[] {
 
 function extractLexiconHits(text: string): string[] {
   const n = normalize(text);
-  return TECH_LEXICON.filter((term) => n.includes(normalize(term)));
+  return TECH_LEXICON.filter((term) => termInText(term, n));
 }
 
 function detectDomain(text: string): ResumeDomain {
@@ -283,11 +283,21 @@ export function tfidfSimilarity(resumeText: string, jdText: string): number {
 export function termInText(term: string, haystackNorm: string): boolean {
   const n = normalize(term);
   if (!n) return false;
-  if (haystackNorm.includes(n)) return true;
+  // Word-boundary match — avoids "sso" hitting inside "associate"
+  const escaped = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (new RegExp(`(?:^|[^a-z0-9+#./])${escaped}(?:[^a-z0-9+#./]|$)`).test(haystackNorm)) {
+    return true;
+  }
   const parts = n
     .split(" ")
     .filter((w) => w.length > 3 && !EXTRA_STOP.has(w) && !eng.includes(w));
-  if (parts.length >= 2) return parts.every((p) => haystackNorm.includes(p));
+  if (parts.length >= 2) {
+    return parts.every((p) =>
+      new RegExp(`(?:^|[^a-z0-9+#./])${p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:[^a-z0-9+#./]|$)`).test(
+        haystackNorm,
+      ),
+    );
+  }
   return false;
 }
 

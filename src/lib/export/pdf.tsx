@@ -122,7 +122,7 @@ function ResumeDocument({ resume }: { resume: StructuredResume }) {
 
         {resume.skills.length > 0 ? (
           <View>
-            <Text style={styles.section}>Technical Skills</Text>
+            <Text style={styles.section}>Skills</Text>
             {resume.skills.map((g) => (
               <Text key={g.category} style={styles.body}>
                 <Text style={styles.skillLabel}>{g.category}: </Text>

@@ -64,7 +64,6 @@ function normKey(s: string): string {
 }
 
 function dedupeText(text: string): string {
-  // Protect date ranges so en-dashes are not treated as list separators
   const dates: string[] = [];
   const protectedText = text.replace(
     /(\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4})\s*[–—-]\s*(Present|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4})/gi,
@@ -122,7 +121,11 @@ const SECTION_ALIASES: Record<string, string> = {
   projects: "projects",
   "labs and projects": "projects",
   labs: "projects",
-  // Ignored for ATS compactness
+  "selected production projects": "projects",
+  "selected open source projects": "projects",
+  "open source projects": "projects",
+  "production projects": "projects",
+  "selected projects": "projects",
   "key strengths": "ignore",
   "target roles": "ignore",
   "personal details": "ignore",
@@ -133,21 +136,49 @@ const SECTION_ALIASES: Record<string, string> = {
 function isSectionHeader(line: string): string | null {
   const cleaned = line.replace(/[:|]+$/g, "").trim().toLowerCase();
   if (SECTION_ALIASES[cleaned]) return SECTION_ALIASES[cleaned];
+
+  if (cleaned.length > 3 && cleaned.length < 70) {
+    if (/\bprojects?\b/.test(cleaned) && !/\bexperience\b/.test(cleaned)) {
+      return "projects";
+    }
+    if (/\b(professional|work)\s+experience\b|\bemployment\b/.test(cleaned)) {
+      return "experience";
+    }
+    if (
+      /\btechnical skills\b|\bcore skills\b|\bskills\b/.test(cleaned) &&
+      cleaned.split(/\s+/).length <= 5
+    ) {
+      return "skills";
+    }
+    if (/^education\b/.test(cleaned)) return "education";
+    if (/^certifications?\b|^certificates\b/.test(cleaned)) return "certifications";
+    if (/^professional summary\b|^summary\b|^profile\b|^objective\b/.test(cleaned)) {
+      return "summary";
+    }
+  }
+
   const upper = line.replace(/[:|]+$/g, "").trim();
-  if (upper === upper.toUpperCase() && upper.length > 3 && upper.length < 40) {
+  if (upper === upper.toUpperCase() && upper.length > 3 && upper.length < 60) {
     const key = upper.toLowerCase();
     if (SECTION_ALIASES[key]) return SECTION_ALIASES[key];
+    if (/\bprojects?\b/.test(key)) return "projects";
   }
   return null;
 }
 
 function isLocationLine(line: string): boolean {
-  return (
-    /\b(lucknow|uttar pradesh|delhi|mumbai|bangalore|bengaluru|hyderabad|chennai|pune|remote|india)\b/i.test(
+  // Job headers often end with a city — never treat those as location-only lines
+  if (
+    /\b(representative|engineer|developer|associate|executive|manager|intern|analyst|specialist|admin|lead|architect|consultant|officer|agent)\b/i.test(
       line,
-    ) &&
-    !/(representative|engineer|associate|executive|manager|intern)/i.test(line) &&
-    line.length < 80
+    )
+  ) {
+    return false;
+  }
+  if (/\s+[—–]\s+/.test(line) && /\d{4}/.test(line)) return false;
+  if (line.length > 100) return false;
+  return /\b(lucknow|uttar pradesh|delhi|mumbai|bangalore|bengaluru|hyderabad|chennai|pune|remote|india|dubai|delaware|usa|uae)\b/i.test(
+    line,
   );
 }
 
@@ -179,14 +210,152 @@ function parseSkillLine(line: string): { category: string; items: string[] } {
   };
 }
 
+function looksLikeJobHeader(line: string): boolean {
+  if (/^[-•*]/.test(line)) return false;
+  if (isDateOnlyLine(line) || isLocationLine(line)) return false;
+  const hasRole =
+    /\b(engineer|developer|representative|associate|manager|analyst|intern|executive|specialist|administrator|admin|lead|architect|consultant|officer|agent|research analyst)\b/i.test(
+      line,
+    );
+  const hasDates =
+    /\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4}\s*[–—-]\s*(Present|\d{4}|[A-Z][a-z]+)/i.test(
+      line,
+    );
+  const hasSep = /\s+[—–]\s+|\s+\|\s+|\s+·\s+/.test(line);
+  if (hasRole && (hasDates || hasSep)) return true;
+  if (hasDates && hasSep) return true;
+  return false;
+}
+
+function parseJobHeader(line: string): {
+  company: string;
+  title: string;
+  location?: string;
+  start: string;
+  end: string;
+} {
+  const dateMatch = line.match(
+    /(\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4})\s*[–—-]\s*(Present|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4})/i,
+  );
+  const start = dateMatch?.[1] || "";
+  const end = dateMatch?.[2] || "";
+  let rest = dateMatch ? line.replace(dateMatch[0], "") : line;
+  rest = rest
+    .replace(/\s*\|\s*/g, " | ")
+    .replace(/\|(\s*\|)+/g, "|")
+    .replace(/^\s*\|\s*|\s*\|\s*$/g, "")
+    .trim();
+
+  const emSplit = rest.split(/\s+[—–]\s+/);
+  if (emSplit.length >= 2) {
+    const company = emSplit[0].trim();
+    const rightParts = emSplit
+      .slice(1)
+      .join(" — ")
+      .split(/\s+\|\s+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const title = rightParts[0] || company;
+    const location = rightParts.find(
+      (p) => p !== title && (isLocationLine(p) || /remote|onsite|hybrid/i.test(p)),
+    );
+    return {
+      company: dedupeText(company),
+      title: dedupeText(title),
+      location: location ? dedupeText(location) : undefined,
+      start,
+      end: end || "Present",
+    };
+  }
+
+  const parts = rest
+    .split(/\s+\|\s+|\s+·\s+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  let title = parts[0] || rest;
+  let company = parts[1] || parts[0] || rest;
+  if (
+    parts.length >= 2 &&
+    /pvt|ltd|inc|llc|corp|company|federal|security|labs|web|infoservices/i.test(parts[1])
+  ) {
+    title = parts[0];
+    company = parts[1];
+  } else if (
+    parts.length >= 2 &&
+    /representative|engineer|developer|associate|executive|manager|analyst/i.test(parts[0])
+  ) {
+    title = parts[0];
+    company = parts[1];
+  } else if (
+    parts.length >= 2 &&
+    /representative|engineer|developer|associate|executive|manager|analyst/i.test(parts[1])
+  ) {
+    company = parts[0];
+    title = parts[1];
+  }
+  const location = parts.find(
+    (p) =>
+      p !== title &&
+      p !== company &&
+      (isLocationLine(p) || /remote|onsite|hybrid/i.test(p)),
+  );
+
+  return {
+    company: dedupeText(company),
+    title: dedupeText(title),
+    location: location ? dedupeText(location) : undefined,
+    start,
+    end: end || "Present",
+  };
+}
+
+function parseProjects(lines: string[]): StructuredResume["projects"] {
+  const projects: StructuredResume["projects"] = [];
+  let current: { name: string; url?: string; bullets: string[] } | null = null;
+
+  const push = () => {
+    if (!current) return;
+    if (current.name && (current.bullets.length || current.url)) {
+      projects.push(current);
+    }
+    current = null;
+  };
+
+  for (const line of lines) {
+    if (/^[-•*]/.test(line)) {
+      if (current) current.bullets.push(line.replace(/^[-•*]\s*/, "").trim());
+      continue;
+    }
+    push();
+    const urlMatch = line.match(/https?:\/\/[^\s)]+/i);
+    let name = line
+      .replace(/https?:\/\/[^\s)]+/gi, "")
+      .replace(/^\[|\]$/g, "")
+      .replace(/\s*[—–:|]\s*$/g, "")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+    // "Opseno: SaaS Business OS" → name Opseno, rest as first bullet hint
+    const colon = name.match(/^([^:]{2,60}):\s+(.+)$/);
+    let firstBullet: string | undefined;
+    if (colon) {
+      name = colon[1].trim();
+      firstBullet = colon[2].trim();
+    }
+    if (!name || name.length > 120) continue;
+    current = {
+      name: dedupeText(name),
+      url: urlMatch ? normalizeUrl(urlMatch[0]) : undefined,
+      bullets: firstBullet ? [firstBullet] : [],
+    };
+  }
+  push();
+  return projects;
+}
+
 function heuristicDraft(rawText: string, links: ResumeLink[]): StructuredResume {
   const draft = emptyResume();
   let text = rawText.replace(/\r/g, "");
-  // Pull inline CORE SKILLS out of summary blobs
-  text = text.replace(
-    /\bCORE SKILLS\b[:\s]*/i,
-    "\nCORE SKILLS\n",
-  );
+  text = text.replace(/\bCORE SKILLS\b[:\s]*/i, "\nCORE SKILLS\n");
 
   const lines = uniqueLines(
     text
@@ -203,6 +372,7 @@ function heuristicDraft(rawText: string, links: ResumeLink[]): StructuredResume 
   if (phone && phone.replace(/\D/g, "").length >= 8) {
     draft.contact.phone = phone.trim();
   }
+
   const scrubContactBits = (s: string) =>
     dedupeText(
       s
@@ -215,7 +385,6 @@ function heuristicDraft(rawText: string, links: ResumeLink[]): StructuredResume 
         .trim(),
     );
 
-  // Location often on line 2
   if (lines[1] && isLocationLine(lines[1])) {
     draft.contact.location = scrubContactBits(lines[1]);
   } else if (isLocationLine(lines[0] || "")) {
@@ -237,7 +406,6 @@ function heuristicDraft(rawText: string, links: ResumeLink[]): StructuredResume 
 
   let current = "preamble";
   for (const line of lines.slice(1)) {
-    // Skip duplicate contact crumbs
     if (EMAIL_RE.test(line) || PHONE_RE.test(line)) continue;
     if (isLocationLine(line) && current === "preamble") {
       if (!draft.contact.location) draft.contact.location = dedupeText(line);
@@ -269,7 +437,6 @@ function heuristicDraft(rawText: string, links: ResumeLink[]): StructuredResume 
     draft.summary = buckets.summary.join(" ").slice(0, 900);
   }
 
-  // Extract CORE SKILLS if embedded in summary text
   const coreSplit = draft.summary.split(/\bCORE SKILLS\b/i);
   if (coreSplit.length > 1) {
     draft.summary = coreSplit[0].trim();
@@ -288,15 +455,22 @@ function heuristicDraft(rawText: string, links: ResumeLink[]): StructuredResume 
     const eduLines = buckets.education.filter((l) => !/^[-•*]/.test(l));
     draft.education = eduLines.map((line) => {
       const clean = dedupeText(line.replace(/^[-•*]\s*/, ""));
-      const bits = clean.split(/\s*[—–|-]\s*/).map((s) => s.trim()).filter(Boolean);
+      const pipe = clean.split(/\s*\|\s*/).map((s) => s.trim()).filter(Boolean);
+      const main = pipe[0] || clean;
+      const dates =
+        pipe.find((b) => /\d{4}/.test(b) && /present|\d{4}\s*[–—-]/i.test(b)) ||
+        pipe.find((b) => /\d{4}/.test(b)) ||
+        "";
+      const details =
+        pipe.filter((b) => b !== main && b !== dates).join(" · ") || undefined;
+      const bits = main.split(/\s+[—–]\s+/).map((s) => s.trim()).filter(Boolean);
       return {
-        school: bits[1] || bits[0] || clean,
-        degree: bits[0] || clean,
-        dates: bits.find((b) => /\d{4}/.test(b)) || "",
-        details: bits.slice(2).filter((b) => !/\d{4}/.test(b)).join(" · ") || undefined,
+        school: bits[1] || bits[0] || main,
+        degree: bits[0] || main,
+        dates,
+        details,
       };
     });
-    // Dedupe education entries
     const seen = new Set<string>();
     draft.education = draft.education.filter((e) => {
       const k = normKey(`${e.degree}|${e.school}|${e.dates}`);
@@ -322,8 +496,15 @@ function heuristicDraft(rawText: string, links: ResumeLink[]): StructuredResume 
       currentJob.title = dedupeText(currentJob.title);
       if (currentJob.location) currentJob.location = dedupeText(currentJob.location);
       currentJob.bullets = uniqueLines(currentJob.bullets.map(dedupeText));
-      // Skip bogus jobs that are just locations
       if (isLocationLine(currentJob.company) && isLocationLine(currentJob.title)) {
+        currentJob = null;
+        return;
+      }
+      const hasRole =
+        /\b(engineer|developer|representative|associate|manager|analyst|intern|executive|specialist|admin|lead|architect|consultant|officer|agent)\b/i.test(
+          `${currentJob.title} ${currentJob.company}`,
+        );
+      if (!hasRole && !currentJob.start && currentJob.bullets.length <= 1) {
         currentJob = null;
         return;
       }
@@ -350,45 +531,14 @@ function heuristicDraft(rawText: string, links: ResumeLink[]): StructuredResume 
         }
         continue;
       }
-
-      pushJob();
-
-      const dateMatch = line.match(
-        /(\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4})\s*[–—-]\s*(Present|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4})/i,
-      );
-      const start = dateMatch?.[1] || "";
-      const end = dateMatch?.[2] || "";
-      const withoutDates = dateMatch
-        ? line.replace(dateMatch[0], "").replace(/[|·]\s*$/, "").trim()
-        : line;
-      const parts = withoutDates
-        .split(/\s+[—–]\s+|\s+\|\s+|\s+·\s+/)
-        .map((p) => p.trim())
-        .filter(Boolean);
-
-      // Prefer "Title · Company" pattern
-      let title = parts[0] || withoutDates;
-      let company = parts[1] || parts[0] || withoutDates;
-      if (parts.length >= 2 && /pvt|ltd|inc|llc|corp|company|federal|security/i.test(parts[1])) {
-        title = parts[0];
-        company = parts[1];
-      } else if (parts.length >= 2 && /representative|engineer|associate|executive|manager/i.test(parts[0])) {
-        title = parts[0];
-        company = parts[1];
+      if (!looksLikeJobHeader(line)) {
+        continue;
       }
-
-      currentJob = {
-        company: dedupeText(company),
-        title: dedupeText(title),
-        location: parts[2] && isLocationLine(parts[2]) ? parts[2] : undefined,
-        start,
-        end: end || "Present",
-        bullets: [],
-      };
+      pushJob();
+      currentJob = { ...parseJobHeader(line), bullets: [] };
     }
     pushJob();
 
-    // Dedupe identical jobs
     const seenJobs = new Set<string>();
     draft.experience = draft.experience.filter((j) => {
       const k = normKey(`${j.company}|${j.title}|${j.start}|${j.end}`);
@@ -396,6 +546,10 @@ function heuristicDraft(rawText: string, links: ResumeLink[]): StructuredResume 
       seenJobs.add(k);
       return true;
     });
+  }
+
+  if (buckets.projects.length) {
+    draft.projects = parseProjects(buckets.projects);
   }
 
   if (!draft.summary) {
