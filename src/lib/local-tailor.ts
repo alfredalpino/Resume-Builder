@@ -24,6 +24,7 @@ export function tailorResumeSmart(
   thinking: string[];
   analysis: JdAnalysis;
   intensity: TailorIntensity;
+  headlineParts: string[];
 } {
   const result = centerResumeForJd(resume, jobDescription, analysis, intensity);
   return {
@@ -31,6 +32,7 @@ export function tailorResumeSmart(
     thinking: result.thinking,
     analysis: result.analysis,
     intensity: result.intensity,
+    headlineParts: result.headlineParts,
   };
 }
 

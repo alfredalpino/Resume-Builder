@@ -41,15 +41,18 @@ export async function POST(req: Request) {
       resume: tailored,
       score: {
         ...score,
-        thinking: [...smart.thinking, ...(score.thinking || [])],
+        thinking: score.thinking || [],
       },
       engine: "smart",
       intensity,
+      headlineParts: smart.headlineParts,
       analysis: {
         titleHints: analysis.titleHints,
         mustHave: analysis.mustHave,
         tools: analysis.tools,
         keywords: analysis.keywords,
+        companyHints: analysis.companyHints,
+        salaryHints: analysis.salaryHints,
       },
     });
   } catch (err) {

@@ -125,8 +125,7 @@ function ResumeDocument({ resume }: { resume: StructuredResume }) {
             <Text style={styles.section}>Skills</Text>
             {resume.skills.map((g) => (
               <Text key={g.category} style={styles.body}>
-                <Text style={styles.skillLabel}>{g.category}: </Text>
-                {g.items.join(" · ")}
+                {`${g.category}: ${g.items.join(" · ")}`}
               </Text>
             ))}
           </View>

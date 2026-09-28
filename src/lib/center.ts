@@ -267,12 +267,11 @@ function missingTools(resumeText: string, analysis: JdAnalysis): string[] {
   return analysis.tools.filter((t) => !termInText(t, n));
 }
 
-function buildHeadline(
-  resume: StructuredResume,
+function buildHeadlineParts(
   analysis: JdAnalysis,
   distance: PivotDistance,
   evidenced: string[],
-): string {
+): string[] {
   const target =
     analysis.titleHints[0] ||
     (analysis.domain === "ai"
@@ -284,7 +283,7 @@ function buildHeadline(
           : "Professional");
 
   if (distance === "hard") {
-    return `Aspiring ${target} | User-Facing Problem Solver | Fast Learner`;
+    return [`Aspiring ${target.replace(/^Aspiring\s+/i, "")}`, "User-Facing Problem Solver", "Fast Learner"];
   }
 
   const stack = evidenced.slice(0, 4);
@@ -293,15 +292,22 @@ function buildHeadline(
       target,
       ...stack,
       analysis.domain === "ai" ? "Product-minded builder" : "Full-stack builder",
-    ]).join(" | ");
+    ]);
   }
 
-  // same-domain: still rewrite toward JD titles + evidenced stack
   const bits = [target, ...stack];
   if (analysis.softSkills.some((s) => /ownership|ship|bias/i.test(s))) {
     bits.push("Owns delivery end to end");
   }
-  return uniquePreserve(bits).slice(0, 5).join(" | ");
+  return uniquePreserve(bits).slice(0, 5);
+}
+
+function buildHeadline(
+  analysis: JdAnalysis,
+  distance: PivotDistance,
+  evidenced: string[],
+): string {
+  return buildHeadlineParts(analysis, distance, evidenced).join(" | ");
 }
 
 function buildSummary(
@@ -310,7 +316,6 @@ function buildSummary(
   distance: PivotDistance,
   themes: string[],
   evidenced: string[],
-  missing: string[],
   transferables: string[],
   lex: LexRule[],
 ): string {
@@ -324,8 +329,10 @@ function buildSummary(
     const bg = applyLex(resume.summary || "", lex)
       .replace(/eager to grow in[^.]*\./gi, "")
       .replace(/\bcustomer care associate with\b/gi, "Background:")
-      .slice(0, 200)
+      .replace(/\s{2,}/g, " ")
+      .slice(0, 220)
       .trim();
+    // Never put "honest gaps" on the resume — gaps belong only in the ATS UI
     return [
       `Targeting ${target} roles with a deliberate pivot from customer-facing operations into product engineering.`,
       bg ? `${capitalize(bg.replace(/\.$/, ""))}.` : "",
@@ -333,16 +340,12 @@ function buildSummary(
         ? `Core transferables: ${transferables.slice(0, 4).join("; ")}.`
         : "Strengths in clarifying requirements, coordinating with technical teams, and delivering under SLA pressure.",
       themeLine ? `Aligning experience toward: ${themeLine}.` : "",
-      missing.length
-        ? `Honest gaps (learning, not claimed): ${missing.slice(0, 5).join(", ")}.`
-        : "",
     ]
       .filter(Boolean)
       .join(" ")
-      .slice(0, 780);
+      .slice(0, 700);
   }
 
-  // same + adjacent: rewrite summary to lead with target vision
   const sourceFacts = applyLex(resume.summary || "", lex)
     .replace(/eager to grow in[^.]*\./gi, "")
     .replace(/voice\s*\/\s*non-voice bpo[^.]*\./gi, "")
@@ -365,14 +368,11 @@ function buildSummary(
     sourceFacts ? capitalize(sourceFacts.replace(/\.$/, "")) + "." : "",
     stackLine ? `Evidence stack: ${stackLine}.` : "",
     themeLine ? `Centered on this role's themes: ${themeLine}.` : "",
-    missing.length && distance !== "same"
-      ? `Not claimed (gaps): ${missing.slice(0, 4).join(", ")}.`
-      : "",
   ]
     .filter(Boolean)
     .join(" ")
     .replace(/\s{2,}/g, " ")
-    .slice(0, 780);
+    .slice(0, 700);
 }
 
 function collectTransferables(text: string): string[] {
@@ -452,24 +452,14 @@ function regroupSkills(
   );
 
   if (distance === "hard") {
-    const prior = allItems.filter((i) =>
-      /customer|sla|csat|crm|ticket|inbound|call|chat|excel|word|data entry|complaint|qa|sop|support/i.test(
-        i,
-      ),
-    );
     const tools = uniquePreserve([
       ...evidenced,
       ...allItems.filter((i) => /excel|word|crm|ticket|ms |git|computer/i.test(i)),
     ]);
+    // Hard pivot: transferables + tools only — do not dump prior BPO skill list on the resume
     return [
       { category: "Transferable Strengths", items: transferables.slice(0, 8) },
       { category: "Tools Already Used", items: tools.slice(0, 8) },
-      {
-        category: "Prior Domain (reframed)",
-        items: uniquePreserve(
-          prior.map((p) => applyLex(p, LEX.support_to_tech)),
-        ).slice(0, 8),
-      },
     ].filter((g) => g.items.length > 0);
   }
 
@@ -543,6 +533,7 @@ export function centerResumeForJd(
   analysis: JdAnalysis;
   distance: PivotDistance;
   intensity: TailorIntensity;
+  headlineParts: string[];
 } {
   const analyzed = analysis ?? analyzeJobDescription(jobDescription);
   const thinking = [...analyzed.thinking];
@@ -567,11 +558,13 @@ export function centerResumeForJd(
 
   if (intensity === "subtle") {
     applySubtle(next, analyzed, keywords, evidenced, themes, thinking);
-    return { resume: next, thinking, analysis: analyzed, distance, intensity };
+    const headlineParts = next.headline
+      ? next.headline.split(/\s*\|\s*/).map((s) => s.trim()).filter(Boolean)
+      : [];
+    return { resume: next, thinking, analysis: analyzed, distance, intensity, headlineParts };
   }
 
   if (intensity === "medium") {
-    // Cap framing: never force hard-pivot "Aspiring SWE" on medium
     const framing: PivotDistance = distance === "hard" ? "adjacent" : distance;
     const mildLex = lex.filter(
       (r) =>
@@ -580,13 +573,12 @@ export function centerResumeForJd(
           r.match.source,
         ),
     );
-    applyMedium(next, analyzed, framing, themes, evidenced, missing, transferables, mildLex, keywords, resumeDomain, thinking);
-    return { resume: next, thinking, analysis: analyzed, distance, intensity };
+    const headlineParts = applyMedium(next, analyzed, framing, themes, evidenced, missing, transferables, mildLex, keywords, resumeDomain, thinking);
+    return { resume: next, thinking, analysis: analyzed, distance, intensity, headlineParts };
   }
 
-  // hard — full vision pivot
-  applyHard(next, analyzed, distance, themes, evidenced, missing, transferables, lex, keywords, resumeDomain, thinking);
-  return { resume: next, thinking, analysis: analyzed, distance, intensity };
+  const headlineParts = applyHard(next, analyzed, distance, themes, evidenced, missing, transferables, lex, keywords, resumeDomain, thinking);
+  return { resume: next, thinking, analysis: analyzed, distance, intensity, headlineParts };
 }
 
 function cleanContact(resume: StructuredResume): StructuredResume {
@@ -700,20 +692,10 @@ function applyMedium(
   keywords: string[],
   resumeDomain: ResumeDomain,
   thinking: string[],
-) {
-  // Soft headline — never "Aspiring …" on medium
-  const target = analyzed.titleHints[0] || (analyzed.domain === "ai" ? "Software Engineer" : "");
-  if (target || evidenced.length) {
-    next.headline = uniquePreserve([
-      next.headline && !/aspiring/i.test(next.headline) ? next.headline.split("|")[0].trim() : target,
-      ...evidenced.slice(0, 4),
-    ])
-      .filter(Boolean)
-      .slice(0, 5)
-      .join(" | ");
-  }
+): string[] {
+  const headlineParts = buildHeadlineParts(analyzed, framing === "hard" ? "adjacent" : framing, evidenced);
+  next.headline = headlineParts.join(" | ");
 
-  // Mild summary: keep identity, strip BPO aspiration, add theme line
   let summary = applyLex(next.summary || "", lex)
     .replace(/eager to grow in[^.]*\./gi, "")
     .replace(/voice\s*\/\s*non-voice bpo[^.]*\./gi, "")
@@ -724,9 +706,8 @@ function applyMedium(
   if (evidenced.length) {
     summary = `${summary} Evidence stack: ${evidenced.slice(0, 5).join(", ")}.`;
   }
-  next.summary = summary.slice(0, 780);
+  next.summary = summary.slice(0, 700);
 
-  // Skills: regroup but never hard-pivot transferables layout
   next.skills = regroupSkills(
     next,
     analyzed,
@@ -771,7 +752,8 @@ function applyMedium(
       ? "Medium: mild ops→tech language reframes; kept original career identity (no hard pivot)."
       : "Medium: mild headline/summary/bullet updates + JD-ranked skills.",
   );
-  if (missing.length) thinking.push(`Gaps left honest: ${missing.slice(0, 6).join(", ")}.`);
+  if (missing.length) thinking.push(`Gaps for ATS UI only: ${missing.slice(0, 6).join(", ")}.`);
+  return headlineParts;
 }
 
 /** Hard: full vision pivot including BPO→SWE transferables framing. */
@@ -787,15 +769,15 @@ function applyHard(
   keywords: string[],
   resumeDomain: ResumeDomain,
   thinking: string[],
-) {
-  next.headline = buildHeadline(next, analyzed, distance, evidenced);
+): string[] {
+  const headlineParts = buildHeadlineParts(analyzed, distance, evidenced);
+  next.headline = headlineParts.join(" | ");
   next.summary = buildSummary(
     next,
     analyzed,
     distance,
     themes,
     evidenced,
-    missing,
     transferables,
     lex,
   );
@@ -844,9 +826,11 @@ function applyHard(
 
   thinking.push(
     distance === "hard"
-      ? "Hard: full career pivot framing (transferables + honest gaps; no invented stack)."
+      ? "Hard: full career pivot framing (transferables; gaps only in ATS UI — not on resume)."
       : distance === "adjacent"
         ? "Hard intensity on adjacent domains: aggressive retargeting of headline/summary/skills/bullets."
         : "Hard intensity on same domain: full vision-centering rewrite toward JD.",
   );
+  if (missing.length) thinking.push(`Gaps for ATS UI only: ${missing.slice(0, 6).join(", ")}.`);
+  return headlineParts;
 }

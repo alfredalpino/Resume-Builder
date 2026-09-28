@@ -189,10 +189,11 @@ function isDateOnlyLine(line: string): boolean {
 }
 
 function splitSkillItems(raw: string): string[] {
+  // Do NOT split on "/" — phrases like "call / chat / email" and "field / technical" are one skill
   return raw
-    .split(/\s*[|,•·—–]\s*|(?:\s+\/\s+)(?=[A-Z])/)
+    .split(/\s*[|,•·—–]\s*/)
     .map((s) => s.trim())
-    .filter((s) => s.length > 1 && s.length < 80)
+    .filter((s) => s.length > 1 && s.length < 100)
     .filter((s) => !/^(and|or|with|the)$/i.test(s));
 }
 

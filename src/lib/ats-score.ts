@@ -90,15 +90,13 @@ export function scoreResume(
   );
 
   const thinking = [
-    ...analyzed.thinking,
-    `TF-IDF similarity: ${similarityPct.toFixed(1)}%.`,
-    `Matched ${hits.length}/${keywords.length} high-signal terms.`,
+    `Matched ${hits.length}/${keywords.length} skill/role terms.`,
     hits.length
-      ? `Strong overlaps: ${hits.slice(0, 8).join(", ")}.`
-      : "Few high-signal overlaps — keep source facts; do not invent skills.",
+      ? `Overlaps: ${hits.slice(0, 8).join(", ")}.`
+      : "Few skill overlaps — keep source facts; do not invent skills.",
     missing.length
-      ? `Honest gaps (not invented): ${missing.slice(0, 8).join(", ")}.`
-      : "No major high-signal gaps.",
+      ? `Skill gaps: ${missing.slice(0, 8).join(", ")}.`
+      : "No major skill gaps vs JD stack.",
   ];
 
   return {
