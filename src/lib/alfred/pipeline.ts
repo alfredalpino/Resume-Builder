@@ -54,10 +54,7 @@ export async function runAlfredPipeline(
   userEmail?: string | null,
 ): Promise<AlfredPipelineResult> {
   const entitlements = getEntitlements(userEmail);
-  let effectiveIntensity = intensity;
-  if (intensity === "hard" && !entitlements.hardIntensity) {
-    effectiveIntensity = "medium";
-  }
+  const effectiveIntensity = intensity;
 
   const analysis = analyzeJobDescription(jobDescription);
   const sourceText = resumeToPlainText(resume);
@@ -91,9 +88,6 @@ export async function runAlfredPipeline(
     `Intensity: ${effectiveIntensity} (${TAILOR_INTENSITY_META[effectiveIntensity].label}).`,
     `Plan tone: ${plan.tone}.`,
   ];
-  if (intensity === "hard" && !entitlements.hardIntensity) {
-    thinking.push("Hard intensity requires Pro — ran Medium instead.");
-  }
 
   const pre = await jevPreAnalyze({ resume, jobDescription, plan });
   thinking.push(...pre.confidenceNotes.map((n) => `Alfred: ${n}`));
@@ -101,6 +95,7 @@ export async function runAlfredPipeline(
   let writer: "deterministic" | "claude" = "deterministic";
   let tailored: StructuredResume;
 
+  // Claude is free for everyone when server key is configured
   const useClaude =
     entitlements.claudeWriter &&
     claudeWriterAvailable() &&
@@ -111,7 +106,7 @@ export async function runAlfredPipeline(
     if (claudeOut) {
       tailored = claudeOut;
       writer = "claude";
-      thinking.push("Writer: Claude (Pro).");
+      thinking.push("Writer: Claude.");
     } else {
       const det = centerResumeForJd(resume, jobDescription, analysis, effectiveIntensity);
       tailored = det.resume;

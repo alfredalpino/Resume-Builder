@@ -4,16 +4,15 @@
 
 AI resume tailor + cover letter assistant. **Tailored to the job. True to you.**
 
-Domain target: `alfredterminal.xyz`
+**Everything is free.** Optional [Buy me a coffee](/coffee) starts at **$1 USD**.
 
 ## How it works
 
 1. Import PDF / DOCX / TXT / MD
 2. Paste a job description
-3. Alfred builds an optimization plan (deterministic; Jev when `TYPESAFE_API_KEY` is set)
-4. Writer: free deterministic polish, or Pro Claude when `ANTHROPIC_API_KEY` + Pro entitlement
-5. Validate (capitalization, no invented tech) → PDF / DOCX
-6. One-click cover letter (strategy → prose)
+3. Alfred builds an optimization plan (Jev when `TYPESAFE_API_KEY` is set)
+4. Writer: deterministic polish, or Claude when `ANTHROPIC_API_KEY` is set
+5. Download PDF / DOCX · one-click cover letter
 
 ## Local setup
 
@@ -24,16 +23,6 @@ npm install
 npm run dev
 ```
 
-See `.env.example` for Auth, Anthropic, TypeSafe (Jev), and Razorpay stubs.
+## Support
 
-## Quality check
-
-```bash
-npx tsx scripts/golden-anas.ts
-```
-
-## Pricing (stubs until Razorpay is live)
-
-- Free: Subtle / Medium
-- Pro: ₹50/mo — Hard + Claude when configured
-- Tips + public opt-in leaderboard at `/pricing`
+`/coffee` — Buy me a coffee (min $1, live FX equivalents). Leaderboard for kind donors.

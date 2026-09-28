@@ -14,7 +14,9 @@ export default auth((req) => {
   const publicApi =
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/tips/leaderboard") ||
-    pathname.startsWith("/api/billing/webhook");
+    pathname.startsWith("/api/billing/webhook") ||
+    pathname === "/api/billing" ||
+    pathname.startsWith("/api/fx");
 
   if (pathname.startsWith("/api/") && !publicApi && !isAuthed) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -33,5 +35,6 @@ export const config = {
     "/api/cover-letter/:path*",
     "/api/billing/:path*",
     "/api/tips/:path*",
+    "/api/fx",
   ],
 };

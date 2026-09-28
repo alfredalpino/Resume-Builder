@@ -1,27 +1,26 @@
 /**
- * Razorpay stubs — activate when RAZORPAY_KEY_ID / SECRET are set.
- * Subscriptions: ₹50/mo Pro. Tips: one-shot payments for leaderboard.
+ * Buy-me-a-coffee tips via Razorpay (when configured).
+ * Minimum $1 USD. No paid feature tiers — product is free.
  */
 
-import { PRICING, razorpayConfigured } from "@/lib/billing/entitlements";
+import { COFFEE, razorpayConfigured } from "@/lib/billing/entitlements";
 
 export type TipEntry = {
   displayName: string;
-  amountInr: number;
+  amountUsd: number;
   createdAt: string;
 };
 
-/** In-memory tip leaderboard until Neon is wired. */
 const tipStore: TipEntry[] = [];
 
 export function getTipLeaderboard(limit = 10): TipEntry[] {
-  return [...tipStore].sort((a, b) => b.amountInr - a.amountInr).slice(0, limit);
+  return [...tipStore].sort((a, b) => b.amountUsd - a.amountUsd).slice(0, limit);
 }
 
-export function recordTipStub(displayName: string, amountInr: number): TipEntry {
+export function recordTipStub(displayName: string, amountUsd: number): TipEntry {
   const entry: TipEntry = {
     displayName: displayName.slice(0, 40) || "Anonymous",
-    amountInr: Math.max(PRICING.tipMinInr, Math.round(amountInr)),
+    amountUsd: Math.max(COFFEE.tipMinUsd, Math.round(amountUsd * 100) / 100),
     createdAt: new Date().toISOString(),
   };
   tipStore.push(entry);
@@ -33,64 +32,43 @@ export type CheckoutIntent =
   | {
       ok: true;
       mode: "stub" | "live";
-      kind: "pro_subscription" | "tip";
-      amountInr: number;
+      kind: "coffee";
+      amountUsd: number;
       message: string;
       orderId?: string;
     };
 
-export async function createProCheckout(_userEmail: string): Promise<CheckoutIntent> {
-  if (!razorpayConfigured()) {
-    return {
-      ok: true,
-      mode: "stub",
-      kind: "pro_subscription",
-      amountInr: PRICING.proMonthlyInr,
-      message:
-        "Razorpay is not configured yet. Pro checkout will activate when RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are set. Use ALFRED_FORCE_PRO=1 or ALFRED_PRO_EMAILS for testing.",
-    };
-  }
-
-  // Live path placeholder — wire Orders API when merchant account is ready
-  return {
-    ok: true,
-    mode: "live",
-    kind: "pro_subscription",
-    amountInr: PRICING.proMonthlyInr,
-    message: "Create Razorpay subscription order (wire Orders API + webhook next).",
-  };
-}
-
-export async function createTipCheckout(
+export async function createCoffeeCheckout(
   displayName: string,
-  amountInr: number,
+  amountUsd: number,
   optInLeaderboard: boolean,
 ): Promise<CheckoutIntent> {
+  const amount = Math.max(COFFEE.tipMinUsd, Math.round(amountUsd * 100) / 100);
+
   if (!razorpayConfigured()) {
     if (optInLeaderboard) {
-      recordTipStub(displayName, amountInr);
+      recordTipStub(displayName, amount);
     }
     return {
       ok: true,
       mode: "stub",
-      kind: "tip",
-      amountInr: Math.max(PRICING.tipMinInr, amountInr),
+      kind: "coffee",
+      amountUsd: amount,
       message: optInLeaderboard
-        ? "Tip recorded on local leaderboard (Razorpay not live yet)."
-        : "Razorpay tip checkout will activate when keys are configured.",
+        ? "Thanks — recorded on the leaderboard (payments go live when Razorpay is connected)."
+        : "Thanks for the thought. Checkout will open when Razorpay is connected.",
     };
   }
 
   return {
     ok: true,
     mode: "live",
-    kind: "tip",
-    amountInr: Math.max(PRICING.tipMinInr, amountInr),
-    message: "Create Razorpay payment link (wire when merchant ready).",
+    kind: "coffee",
+    amountUsd: amount,
+    message: "Create Razorpay payment (wire Orders API when merchant ready).",
   };
 }
 
-/** Verify Razorpay webhook signature — stub until secrets exist. */
 export function verifyRazorpayWebhook(
   _rawBody: string,
   _signature: string | null,
@@ -98,6 +76,5 @@ export function verifyRazorpayWebhook(
   if (!process.env.RAZORPAY_WEBHOOK_SECRET?.trim()) {
     return { ok: false, reason: "RAZORPAY_WEBHOOK_SECRET not set" };
   }
-  // Real HMAC verification goes here when live
   return { ok: false, reason: "Webhook verification not implemented — merchant pending" };
 }

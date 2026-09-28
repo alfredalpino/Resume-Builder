@@ -1,25 +1,16 @@
 /**
- * Entitlements — FREE by default until Razorpay is live.
- * Pro unlocks Hard intensity, Claude writer, unlimited cover letters, DOCX.
+ * Everything is free for everyone.
+ * Optional "Buy me a coffee" tips start at $1 USD — never gates features.
  */
 
-export type PlanTier = "free" | "pro";
-
 export type Entitlements = {
-  tier: PlanTier;
   hardIntensity: boolean;
   claudeWriter: boolean;
   unlimitedCoverLetters: boolean;
   docxExport: boolean;
-  coverLettersRemaining: number;
   tipsEnabled: boolean;
   razorpayReady: boolean;
 };
-
-const PRO_EMAILS = (process.env.ALFRED_PRO_EMAILS || "")
-  .split(",")
-  .map((s) => s.trim().toLowerCase())
-  .filter(Boolean);
 
 export function razorpayConfigured(): boolean {
   return Boolean(
@@ -27,30 +18,21 @@ export function razorpayConfigured(): boolean {
   );
 }
 
-export function getEntitlements(userEmail?: string | null): Entitlements {
-  const email = (userEmail || "").toLowerCase();
-  const forcePro =
-    process.env.ALFRED_FORCE_PRO === "1" || (email && PRO_EMAILS.includes(email));
-  // Until Razorpay is live, Hard stays available so quality work can be tested;
-  // Claude still requires ANTHROPIC_API_KEY. Flip ALFRED_GATE_HARD=1 to enforce Pro.
-  const gateHard = process.env.ALFRED_GATE_HARD === "1";
-  const tier: PlanTier = forcePro ? "pro" : "free";
-  const isPro = tier === "pro";
-
+/** All product features unlocked. Claude only needs a server key to run. */
+export function getEntitlements(_userEmail?: string | null): Entitlements {
   return {
-    tier,
-    hardIntensity: isPro || !gateHard,
-    claudeWriter: isPro && Boolean(process.env.ANTHROPIC_API_KEY?.trim()),
-    unlimitedCoverLetters: isPro,
+    hardIntensity: true,
+    claudeWriter: Boolean(process.env.ANTHROPIC_API_KEY?.trim()),
+    unlimitedCoverLetters: true,
     docxExport: true,
-    coverLettersRemaining: isPro ? 999 : 5,
     tipsEnabled: true,
     razorpayReady: razorpayConfigured(),
   };
 }
 
-export const PRICING = {
-  proMonthlyInr: 50,
-  currency: "INR",
-  tipMinInr: 10,
+export const COFFEE = {
+  tipMinUsd: 1,
+  currency: "USD",
+  /** Currencies to show live equivalents for (Frankfurter-supported). */
+  displayCurrencies: ["INR", "EUR", "GBP", "AED", "CAD", "AUD", "SGD", "JPY"] as const,
 } as const;

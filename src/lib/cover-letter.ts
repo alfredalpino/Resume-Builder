@@ -81,7 +81,7 @@ export async function buildCoverLetter(
       strategy as unknown as Record<string, string>,
     );
     if (claude) {
-      thinking.push("Writer: Claude (Pro).");
+      thinking.push("Writer: Claude.");
       return { letter: claude, thinking, strategy };
     }
     thinking.push("Claude cover unavailable — deterministic strategy letter.");

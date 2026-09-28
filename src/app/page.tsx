@@ -18,8 +18,8 @@ export default async function HomePage() {
           </span>
         </div>
         <div className="flex items-center gap-4 text-sm text-[var(--terminal-gray)]">
-          <Link href="/pricing" className="hover:text-[var(--terminal-white)]">
-            Pricing
+          <Link href="/coffee" className="hover:text-[var(--terminal-white)]">
+            Buy me a coffee
           </Link>
           <SignInButton />
         </div>

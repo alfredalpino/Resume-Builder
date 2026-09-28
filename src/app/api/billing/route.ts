@@ -1,47 +1,39 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { requireSession, apiError } from "@/lib/api";
-import { getEntitlements, PRICING } from "@/lib/billing/entitlements";
-import {
-  createProCheckout,
-  createTipCheckout,
-  getTipLeaderboard,
-} from "@/lib/billing/razorpay";
+import { apiError } from "@/lib/api";
+import { getEntitlements, COFFEE } from "@/lib/billing/entitlements";
+import { createCoffeeCheckout, getTipLeaderboard } from "@/lib/billing/razorpay";
+import { fetchUsdRates } from "@/lib/billing/fx";
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  const { error } = await requireSession();
-  if (error) return error;
+  const rates = await fetchUsdRates();
   const session = await auth();
   return NextResponse.json({
-    entitlements: getEntitlements(session?.user?.email),
-    pricing: PRICING,
+    coffee: COFFEE,
+    rates,
     leaderboard: getTipLeaderboard(10),
+    entitlements: session?.user ? getEntitlements(session.user.email) : null,
   });
 }
 
+/** Coffee tips — no paid features; auth optional. */
 export async function POST(req: Request) {
-  const { error } = await requireSession();
-  if (error) return error;
-  const session = await auth();
   try {
+    const session = await auth();
     const body = await req.json();
-    const action = String(body.action || "");
-    if (action === "pro") {
-      const intent = await createProCheckout(session?.user?.email || "");
-      return NextResponse.json(intent);
+    const amountUsd = Number(body.amountUsd);
+    if (!Number.isFinite(amountUsd) || amountUsd < COFFEE.tipMinUsd) {
+      return apiError(`Minimum is $${COFFEE.tipMinUsd}`);
     }
-    if (action === "tip") {
-      const intent = await createTipCheckout(
-        String(body.displayName || session?.user?.name || "Anonymous"),
-        Number(body.amountInr) || PRICING.tipMinInr,
-        Boolean(body.optInLeaderboard),
-      );
-      return NextResponse.json(intent);
-    }
-    return apiError("Unknown action");
+    const intent = await createCoffeeCheckout(
+      String(body.displayName || session?.user?.name || "Anonymous"),
+      amountUsd,
+      body.optInLeaderboard !== false,
+    );
+    return NextResponse.json(intent);
   } catch (err) {
-    return apiError(err instanceof Error ? err.message : "Billing failed", 400);
+    return apiError(err instanceof Error ? err.message : "Checkout failed", 400);
   }
 }

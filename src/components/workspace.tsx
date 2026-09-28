@@ -467,8 +467,8 @@ export function Workspace({ userName, userEmail }: Props) {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <a href="/pricing" className="text-sm text-[var(--terminal-gray)] hover:text-[var(--alfred-amber)]">
-              Pricing
+            <a href="/coffee" className="text-sm text-[var(--terminal-gray)] hover:text-[var(--alfred-amber)]">
+              Buy me a coffee
             </a>
             <SignOutButton />
           </div>
