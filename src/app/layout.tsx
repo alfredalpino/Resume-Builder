@@ -32,7 +32,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable} h-full antialiased`}>
-      <body className="min-h-full bg-[var(--terminal-black)] font-sans text-[var(--terminal-white)]">
+      <body className="min-h-full bg-[var(--bg)] font-sans text-[var(--text)]">
         <Providers>{children}</Providers>
       </body>
     </html>

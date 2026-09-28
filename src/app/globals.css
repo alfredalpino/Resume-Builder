@@ -1,9 +1,10 @@
 @import "tailwindcss";
 @import "../lib/brand/tokens.css";
 
+html,
 body {
-  background: var(--terminal-black);
-  color: var(--terminal-white);
+  background: var(--bg);
+  color: var(--text);
 }
 
 ::selection {

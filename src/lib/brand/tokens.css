@@ -1,30 +1,62 @@
-/* Alfred Terminal brand tokens — docs/Brand-ID.md */
-:root {
-  --terminal-black: #0a0a0b;
-  --terminal-surface: #111113;
-  --terminal-elevated: #18181b;
-  --terminal-white: #f5f5f5;
-  --terminal-gray: #a1a1aa;
-  --terminal-muted: #71717a;
+/* Alfred Terminal design tokens — dark default, light via [data-theme="light"] */
+
+:root,
+[data-theme="dark"] {
+  --bg: #0a0a0b;
+  --surface: #111113;
+  --elevated: #18181b;
+  --text: #f5f5f5;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(255, 255, 255, 0.14);
+  --paper: #ffffff;
+  --paper-text: #111111;
   --alfred-amber: #f5a524;
-  --terminal-gold: #ffd166;
-  --terminal-border: rgba(255, 255, 255, 0.08);
   --success: #22c55e;
   --warning: #f59e0b;
   --error: #ef4444;
-  --background: var(--terminal-black);
-  --foreground: var(--terminal-white);
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --bg: #f7f7f8;
+  --surface: #ffffff;
+  --elevated: #f1f1f3;
+  --text: #111113;
+  --text-secondary: #52525b;
+  --text-muted: #71717a;
+  --border: rgba(0, 0, 0, 0.08);
+  --border-hover: rgba(0, 0, 0, 0.14);
+  --paper: #ffffff;
+  --paper-text: #111111;
+  --alfred-amber: #d97706;
+  --success: #16a34a;
+  --warning: #d97706;
+  --error: #dc2626;
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+  color-scheme: light;
+}
+
+/* Back-compat aliases used across the app */
+:root,
+[data-theme="dark"],
+[data-theme="light"] {
+  --terminal-black: var(--bg);
+  --terminal-surface: var(--surface);
+  --terminal-elevated: var(--elevated);
+  --terminal-white: var(--text);
+  --terminal-gray: var(--text-secondary);
+  --terminal-muted: var(--text-muted);
+  --terminal-border: var(--border);
+  --background: var(--bg);
+  --foreground: var(--text);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-terminal-black: var(--terminal-black);
-  --color-terminal-surface: var(--terminal-surface);
-  --color-terminal-elevated: var(--terminal-elevated);
-  --color-terminal-white: var(--terminal-white);
-  --color-terminal-gray: var(--terminal-gray);
-  --color-alfred-amber: var(--alfred-amber);
   --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-mono), ui-monospace, monospace;
 }

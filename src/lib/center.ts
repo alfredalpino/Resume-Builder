@@ -30,15 +30,15 @@ export const TAILOR_INTENSITY_META: Record<
 > = {
   subtle: {
     label: "Subtle",
-    blurb: "Keyword promotion & reordering only. Keeps your wording almost intact.",
+    blurb: "Preserve structure. Keyword and ordering improvements.",
   },
   medium: {
-    label: "Medium",
-    blurb: "Mild line changes: soft headline/summary tweaks and light bullet reframes.",
+    label: "Balanced",
+    blurb: "Optimize for relevance. Adjust summary, skills, and bullets while keeping your voice.",
   },
   hard: {
-    label: "Hard",
-    blurb: "Full vision pivot — e.g. BPO → software/AI engineer framing (still no invented tech).",
+    label: "Aggressive",
+    blurb: "Maximum tailoring around the target role — still no invented experience.",
   },
 };
 

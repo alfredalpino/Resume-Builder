@@ -10,9 +10,25 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
+import Link from "next/link";
+import {
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  Download,
+  FileText,
+  Lock,
+  RefreshCw,
+  Upload,
+} from "lucide-react";
 import type { AtsScore, StructuredResume } from "@/lib/schema";
 import { emptyResume } from "@/lib/schema";
 import { SignOutButton } from "@/components/auth-buttons";
+import { ThemeToggle } from "@/components/theme-toggle";
+import {
+  ProgressStepper,
+  type WorkflowStepId,
+} from "@/components/app-shell/progress-stepper";
 import { TAILOR_INTENSITY_META, type TailorIntensity } from "@/lib/center";
 import {
   DEFAULT_RESUME_STYLE,
@@ -25,7 +41,14 @@ type Props = {
   userEmail?: string | null;
 };
 
-type ViewMode = "preview" | "compare" | "edit";
+type ViewMode = "original" | "tailored" | "compare" | "edit";
+type DocTab = "resume" | "cover";
+
+type HumanAnalysis = {
+  strongMatches: string[];
+  needsAttention: string[];
+  opportunities: string[];
+};
 
 async function readError(res: Response): Promise<string> {
   try {
@@ -45,33 +68,35 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-function ResumeCard({
+function ResumePaper({
   resume,
-  label,
   style,
+  label,
 }: {
   resume: StructuredResume;
-  label: string;
   style: ResumeStyle;
+  label?: string;
 }) {
   const css: CSSProperties = {
     fontFamily: previewFontFamily(style),
     fontSize: `${style.fontSize}px`,
-    lineHeight: 1.4,
+    lineHeight: 1.45,
   };
   const showHeadline = style.showHeadline && Boolean(resume.headline?.trim());
 
   return (
     <article
       style={css}
-      className="max-h-[min(78vh,880px)] overflow-auto rounded-md border border-[var(--terminal-border)] bg-[var(--terminal-surface)] p-6 text-[#111] shadow-inner"
+      className="mx-auto max-h-[min(72vh,820px)] w-full max-w-[640px] overflow-auto rounded-sm bg-[var(--paper)] p-8 text-[var(--paper-text)] shadow-[var(--shadow)]"
     >
-      <p
-        className="mb-2 text-center font-semibold uppercase tracking-wider text-[var(--alfred-amber)]"
-        style={{ fontSize: Math.max(8, style.fontSize - 1) }}
-      >
-        {label}
-      </p>
+      {label ? (
+        <p
+          className="mb-2 text-center text-[10px] font-semibold uppercase tracking-wider text-[var(--alfred-amber)]"
+          style={{ fontSize: Math.max(8, style.fontSize - 1) }}
+        >
+          {label}
+        </p>
+      ) : null}
       <h1
         className="text-center font-bold tracking-wide"
         style={{ fontSize: style.fontSize + 7 }}
@@ -83,14 +108,14 @@ function ResumeCard({
           {resume.headline}
         </p>
       ) : null}
-      <p className="mt-1 text-center" style={{ fontSize: Math.max(8, style.fontSize - 1) }}>
+      <p className="mt-1 text-center opacity-70" style={{ fontSize: Math.max(8, style.fontSize - 1) }}>
         {[resume.contact.location, resume.contact.email, resume.contact.phone]
           .filter(Boolean)
           .join("  ·  ")}
       </p>
       {resume.summary ? (
         <>
-          <h3 className="mt-3 border-b border-[#111] pb-0.5 font-bold uppercase tracking-wide">
+          <h3 className="mt-4 border-b border-black/80 pb-0.5 font-bold uppercase tracking-wide">
             Professional Summary
           </h3>
           <p className="mt-1 text-justify">{resume.summary}</p>
@@ -98,7 +123,7 @@ function ResumeCard({
       ) : null}
       {resume.skills.length ? (
         <>
-          <h3 className="mt-3 border-b border-[#111] pb-0.5 font-bold uppercase tracking-wide">
+          <h3 className="mt-3 border-b border-black/80 pb-0.5 font-bold uppercase tracking-wide">
             Skills
           </h3>
           {resume.skills.map((g) => (
@@ -111,7 +136,7 @@ function ResumeCard({
       ) : null}
       {resume.experience.length ? (
         <>
-          <h3 className="mt-3 border-b border-[#111] pb-0.5 font-bold uppercase tracking-wide">
+          <h3 className="mt-3 border-b border-black/80 pb-0.5 font-bold uppercase tracking-wide">
             Experience
           </h3>
           {resume.experience.map((job, idx) => (
@@ -119,7 +144,7 @@ function ResumeCard({
               <p className="font-bold">
                 {job.company} — {job.title}
               </p>
-              <p style={{ fontSize: Math.max(8, style.fontSize - 1) }} className="text-[var(--terminal-gray)]">
+              <p className="opacity-60" style={{ fontSize: Math.max(8, style.fontSize - 1) }}>
                 {job.start} – {job.end}
                 {job.location ? `  ·  ${job.location}` : ""}
               </p>
@@ -134,7 +159,7 @@ function ResumeCard({
       ) : null}
       {resume.projects.length ? (
         <>
-          <h3 className="mt-3 border-b border-[#111] pb-0.5 font-bold uppercase tracking-wide">
+          <h3 className="mt-3 border-b border-black/80 pb-0.5 font-bold uppercase tracking-wide">
             Projects
           </h3>
           {resume.projects.map((p, idx) => (
@@ -151,7 +176,7 @@ function ResumeCard({
       ) : null}
       {resume.education.length ? (
         <>
-          <h3 className="mt-3 border-b border-[#111] pb-0.5 font-bold uppercase tracking-wide">
+          <h3 className="mt-3 border-b border-black/80 pb-0.5 font-bold uppercase tracking-wide">
             Education
           </h3>
           {resume.education.map((e, idx) => {
@@ -183,15 +208,15 @@ export function Workspace({ userName, userEmail }: Props) {
   const [intensity, setIntensity] = useState<TailorIntensity>("medium");
   const [appliedIntensity, setAppliedIntensity] = useState<TailorIntensity | null>(null);
   const [style, setStyle] = useState<ResumeStyle>(DEFAULT_RESUME_STYLE);
-  const [viewMode, setViewMode] = useState<ViewMode>("preview");
+  const [viewMode, setViewMode] = useState<ViewMode>("tailored");
+  const [docTab, setDocTab] = useState<DocTab>("resume");
   const [coverLetter, setCoverLetter] = useState("");
   const [copied, setCopied] = useState(false);
-  const [step, setStep] = useState(1);
-  const [humanAnalysis, setHumanAnalysis] = useState<{
-    strongMatches: string[];
-    needsAttention: string[];
-    opportunities: string[];
-  } | null>(null);
+  const [showRaw, setShowRaw] = useState(false);
+  const [step, setStep] = useState<WorkflowStepId>(1);
+  const [unlockedThrough, setUnlockedThrough] = useState<WorkflowStepId>(1);
+  const [humanAnalysis, setHumanAnalysis] = useState<HumanAnalysis | null>(null);
+  const [mobileTab, setMobileTab] = useState<"workspace" | "preview">("workspace");
   const scoreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -199,6 +224,21 @@ export function Workspace({ userName, userEmail }: Props) {
     () => sourceResume.contact.fullName !== "Your Name" || Boolean(sourceResume.summary),
     [sourceResume],
   );
+  const hasJd = jobDescription.trim().length >= 40;
+  const hasTailored = Boolean(appliedIntensity);
+  const skillCount = sourceResume.skills.reduce((n, g) => n + g.items.length, 0);
+  const wordCount = useMemo(() => {
+    const t = [sourceResume.summary, ...sourceResume.experience.flatMap((j) => j.bullets)].join(" ");
+    return t.trim() ? t.trim().split(/\s+/).length : 0;
+  }, [sourceResume]);
+
+  function unlock(to: WorkflowStepId) {
+    setUnlockedThrough((u) => (to > u ? to : u));
+  }
+
+  function go(to: WorkflowStepId) {
+    if (to <= unlockedThrough) setStep(to);
+  }
 
   const liveScore = useCallback(async (r: StructuredResume, jd: string) => {
     if (!jd.trim() || jd.trim().length < 40) return;
@@ -227,14 +267,21 @@ export function Workspace({ userName, userEmail }: Props) {
     };
   }, [resume, jobDescription, liveScore]);
 
+  useEffect(() => {
+    if (hasSource && hasJd && unlockedThrough < 3) {
+      unlock(3);
+    }
+  }, [hasSource, hasJd, unlockedThrough]);
+
   function adoptParsed(parsed: StructuredResume, text?: string) {
     setSourceResume(structuredClone(parsed));
     setResume(parsed);
     setScore(null);
     setAppliedIntensity(null);
     setCoverLetter("");
-    setViewMode("preview");
     setHumanAnalysis(null);
+    setViewMode("original");
+    unlock(2);
     setStep(2);
     if (text !== undefined) setRawText(text);
   }
@@ -252,7 +299,7 @@ export function Workspace({ userName, userEmail }: Props) {
       const data = (await res.json()) as { rawText: string; resume: StructuredResume };
       adoptParsed(data.resume, data.rawText);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Parse failed");
+      setError(err instanceof Error ? err.message : "We couldn't read this file.");
     } finally {
       setBusy(null);
     }
@@ -274,8 +321,9 @@ export function Workspace({ userName, userEmail }: Props) {
       if (!res.ok) throw new Error(await readError(res));
       const data = (await res.json()) as { resume: StructuredResume };
       adoptParsed(data.resume);
+      setFileName("pasted-resume.txt");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Parse failed");
+      setError(err instanceof Error ? err.message : "We couldn't parse that text.");
     } finally {
       setBusy(null);
     }
@@ -295,18 +343,56 @@ export function Workspace({ userName, userEmail }: Props) {
     setTimeout(() => setProgress(0), 400);
   }
 
+  async function runAnalysis() {
+    if (!hasSource || !hasJd) {
+      setError("Add a resume and job description first.");
+      return;
+    }
+    setBusy("analyze");
+    setError(null);
+    startProgress();
+    try {
+      await liveScore(sourceResume, jobDescription);
+      // Lightweight analysis pass via tailor subtle to get humanAnalysis structure without heavy rewrite
+      const res = await fetch("/api/tailor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resume: sourceResume,
+          jobDescription,
+          intensity: "subtle",
+        }),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      const data = (await res.json()) as {
+        score: AtsScore;
+        humanAnalysis?: HumanAnalysis;
+      };
+      setScore(data.score);
+      setHumanAnalysis(data.humanAnalysis || null);
+      unlock(4);
+      setStep(3);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "We couldn't finish the analysis.");
+    } finally {
+      stopProgress();
+      setBusy(null);
+    }
+  }
+
   async function tailor(nextIntensity: TailorIntensity = intensity) {
     if (!jobDescription.trim()) {
-      setError("Paste a job description");
+      setError("Add a job description first.");
       return;
     }
     if (!hasSource) {
-      setError("Import or parse a resume first");
+      setError("Import a resume first.");
       return;
     }
     setBusy("tailor");
     setError(null);
     setIntensity(nextIntensity);
+    setStep(4);
     startProgress();
     try {
       const res = await fetch("/api/tailor", {
@@ -323,20 +409,18 @@ export function Workspace({ userName, userEmail }: Props) {
         resume: StructuredResume;
         score: AtsScore;
         intensity?: TailorIntensity;
-        humanAnalysis?: {
-          strongMatches: string[];
-          needsAttention: string[];
-          opportunities: string[];
-        };
+        humanAnalysis?: HumanAnalysis;
       };
       setResume(data.resume);
       setScore(data.score);
       setAppliedIntensity(data.intensity || nextIntensity);
-      setHumanAnalysis(data.humanAnalysis || null);
-      setViewMode("compare");
+      if (data.humanAnalysis) setHumanAnalysis(data.humanAnalysis);
+      setViewMode("tailored");
+      unlock(5);
       setStep(5);
+      setMobileTab("preview");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Tailoring failed");
+      setError(err instanceof Error ? err.message : "We couldn't finish tailoring.");
     } finally {
       stopProgress();
       setBusy(null);
@@ -350,6 +434,7 @@ export function Workspace({ userName, userEmail }: Props) {
     }
     setBusy("cover");
     setError(null);
+    setDocTab("cover");
     startProgress();
     try {
       const res = await fetch("/api/cover-letter", {
@@ -413,7 +498,8 @@ export function Workspace({ userName, userEmail }: Props) {
     setAppliedIntensity(null);
     setCoverLetter("");
     setError(null);
-    setViewMode("preview");
+    setViewMode("original");
+    setStep(hasJd ? 2 : 1);
   }
 
   async function exportFile(kind: "pdf" | "docx") {
@@ -444,412 +530,523 @@ export function Workspace({ userName, userEmail }: Props) {
     setResume((r) => ({ ...r, contact: { ...r.contact, [field]: value } }));
   }
 
-  const steps = [
-    "Resume",
-    "Job Description",
-    "Analysis",
-    "Tailoring",
-    "Review",
-    "Download",
-  ];
+  const processLabel =
+    busy === "parse"
+      ? "> PARSING RESUME..."
+      : busy === "analyze"
+        ? "> ANALYZING ROLE..."
+        : busy === "tailor"
+          ? "> TAILORING APPLICATION..."
+          : busy === "cover"
+            ? "> WRITING COVER LETTER..."
+            : null;
 
   return (
-    <div className="min-h-screen bg-[var(--terminal-black)] text-[var(--terminal-white)]">
-      <header className="border-b border-[var(--terminal-border)] bg-[var(--terminal-surface)]">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3">
-          <div>
-            <p className="flex items-center gap-2 text-lg font-semibold tracking-tight">
+    <div className="flex min-h-screen flex-col bg-[var(--bg)] text-[var(--text)]">
+      <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur">
+        <div className="mx-auto flex max-w-[1440px] items-center gap-3 px-4 py-3 lg:px-8">
+          <div className="min-w-[140px] shrink-0">
+            <p className="flex items-center gap-2 text-sm font-semibold tracking-tight">
               <span className="font-mono text-[var(--alfred-amber)]">&gt;_</span>
               Alfred Terminal
             </p>
-            <p className="text-xs text-[var(--terminal-gray)]">
-              {userName || userEmail || "user"} · Tailored to the job. True to you.
+            <p className="hidden text-[10px] text-[var(--text-muted)] sm:block">
+              Tailored to the job. True to you.
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <a href="/coffee" className="text-sm text-[var(--terminal-gray)] hover:text-[var(--alfred-amber)]">
+
+          <ProgressStepper
+            current={step}
+            unlockedThrough={unlockedThrough}
+            onNavigate={go}
+          />
+
+          <div className="flex shrink-0 items-center gap-2">
+            <Link
+              href="/coffee"
+              className="hidden text-sm text-[var(--text-secondary)] hover:text-[var(--alfred-amber)] sm:inline"
+            >
               Buy me a coffee
-            </a>
-            <SignOutButton />
+            </Link>
+            <ThemeToggle />
+            <div className="hidden items-center gap-2 border-l border-[var(--border)] pl-2 sm:flex">
+              <span className="max-w-[120px] truncate text-xs text-[var(--text-muted)]">
+                {userName || userEmail || "Account"}
+              </span>
+              <SignOutButton />
+            </div>
           </div>
         </div>
-        <div className="mx-auto flex max-w-7xl gap-2 overflow-x-auto px-4 pb-3">
-          {steps.map((label, i) => {
-            const n = i + 1;
-            const active = step === n;
-            return (
-              <button
-                key={label}
-                type="button"
-                onClick={() => setStep(n)}
-                className={`shrink-0 rounded-md px-2.5 py-1 font-mono text-[11px] ${
-                  active
-                    ? "bg-[var(--alfred-amber)]/15 text-[var(--alfred-amber)]"
-                    : "text-[var(--terminal-muted)] hover:text-[var(--terminal-gray)]"
-                }`}
-              >
-                {String(n).padStart(2, "0")} — {label}
-              </button>
-            );
-          })}
-        </div>
-        {busy === "tailor" || busy === "cover" || progress > 0 ? (
-          <div className="h-1 w-full bg-[var(--terminal-elevated)]">
+        {(busy || progress > 0) && (
+          <div className="h-0.5 w-full bg-[var(--elevated)]">
             <div
-              className="h-full bg-[var(--alfred-amber)] transition-all duration-300 ease-out"
+              className="h-full bg-[var(--alfred-amber)] transition-all duration-300"
               style={{ width: `${Math.max(progress, busy ? 8 : 0)}%` }}
             />
           </div>
-        ) : (
-          <div className="h-1 w-full bg-transparent" />
         )}
-        {(busy === "tailor" || busy === "cover") && (
-          <p className="px-4 py-1 font-mono text-[11px] text-[var(--alfred-amber)]">
-            {busy === "tailor"
-              ? "> ANALYZING RESUME... BUILDING TAILORED RESUME..."
-              : "> WRITING COVER LETTER..."}
+        {processLabel ? (
+          <p className="px-4 py-1.5 font-mono text-[11px] text-[var(--alfred-amber)] lg:px-8">
+            {processLabel}
           </p>
-        )}
+        ) : null}
       </header>
 
-      <main className="mx-auto grid max-w-7xl gap-6 px-4 py-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,440px)]">
-        <div className="flex flex-col gap-5">
-          <section className="rounded-xl border border-[var(--terminal-border)] bg-[var(--terminal-surface)] p-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--terminal-gray)]">
-              01 — Resume
-            </h2>
-            <label className="mt-3 flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-[var(--terminal-border)] bg-[var(--terminal-elevated)] px-4 py-6 text-center hover:border-[var(--alfred-amber)]">
-              <span className="text-sm font-medium">Drop PDF / DOCX / TXT / MD</span>
-              <span className="mt-1 text-xs text-[var(--terminal-muted)]">
-                {fileName || "or click to browse · max 5 MB"}
+      {/* Mobile tabs */}
+      <div className="flex border-b border-[var(--border)] lg:hidden">
+        {(["workspace", "preview"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setMobileTab(t)}
+            className={`flex-1 py-2.5 text-sm capitalize ${
+              mobileTab === t
+                ? "border-b-2 border-[var(--alfred-amber)] text-[var(--alfred-amber)]"
+                : "text-[var(--text-muted)]"
+            }`}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+
+      <main className="mx-auto grid w-full max-w-[1440px] flex-1 gap-0 lg:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]">
+        <div
+          className={`min-w-0 space-y-8 overflow-y-auto px-4 py-6 lg:px-8 lg:py-8 ${
+            mobileTab === "preview" ? "hidden lg:block" : ""
+          }`}
+        >
+          {error ? (
+            <div className="flex items-start gap-3 rounded-xl border border-[var(--error)]/30 bg-[var(--error)]/10 px-4 py-3 text-sm">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--error)]" />
+              <div>
+                <p className="font-medium">Something went wrong</p>
+                <p className="mt-0.5 text-[var(--text-secondary)]">{error}</p>
+                <p className="mt-1 text-xs text-[var(--text-muted)]">Your original resume is safe.</p>
+              </div>
+            </div>
+          ) : null}
+
+          {/* STEP 1 — Resume */}
+          {(step === 1 || (step <= 2 && !hasSource)) && (
+            <section>
+              <h2 className="text-xl font-semibold tracking-tight">Resume</h2>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                Start with your current resume.
+              </p>
+              <label className="mt-5 flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface)] px-6 py-12 text-center transition hover:border-[var(--alfred-amber)]/40">
+                <Upload className="h-8 w-8 text-[var(--text-muted)]" />
+                <span className="mt-3 text-sm font-medium">Drop PDF, DOCX, TXT, or Markdown</span>
+                <span className="mt-1 text-xs text-[var(--text-muted)]">or browse files · max 5 MB</span>
+                <input
+                  type="file"
+                  accept=".pdf,.docx,.txt,.md,.markdown,application/pdf,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  className="hidden"
+                  onChange={(e) => onFileChange(e.target.files?.[0] || null)}
+                />
+              </label>
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowRaw((s) => !s)}
+                  className="inline-flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                >
+                  <ChevronDown className={`h-3.5 w-3.5 transition ${showRaw ? "rotate-180" : ""}`} />
+                  Or paste resume text
+                </button>
+                {showRaw ? (
+                  <div className="mt-2">
+                    <textarea
+                      value={rawText}
+                      onChange={(e) => setRawText(e.target.value)}
+                      rows={6}
+                      className="w-full rounded-lg border border-[var(--border)] bg-[var(--elevated)] px-3 py-2 font-mono text-xs outline-none focus:border-[var(--alfred-amber)]"
+                      placeholder="Paste resume text…"
+                    />
+                    <button
+                      type="button"
+                      disabled={!!busy}
+                      onClick={parsePastedText}
+                      className="mt-2 rounded-lg border border-[var(--border)] px-3 py-2 text-sm hover:border-[var(--border-hover)] disabled:opacity-50"
+                    >
+                      {busy === "parse" ? "Parsing…" : "Parse text"}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </section>
+          )}
+
+          {hasSource ? (
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+              <FileText className="h-5 w-5 text-[var(--alfred-amber)]" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{fileName || "Resume"}</p>
+                <p className="text-xs text-[var(--text-muted)]">
+                  {wordCount} words · {skillCount} skills · {sourceResume.experience.length} roles
+                </p>
+              </div>
+              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--success)]/15 px-2.5 py-1 text-xs text-[var(--success)]">
+                <Check className="h-3 w-3" /> Parsed
               </span>
-              <input
-                type="file"
-                accept=".pdf,.docx,.txt,.md,.markdown,application/pdf,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                className="hidden"
-                onChange={(e) => onFileChange(e.target.files?.[0] || null)}
+              <label className="cursor-pointer text-xs text-[var(--text-secondary)] underline-offset-2 hover:underline">
+                Replace
+                <input
+                  type="file"
+                  accept=".pdf,.docx,.txt,.md,.markdown,application/pdf"
+                  className="hidden"
+                  onChange={(e) => onFileChange(e.target.files?.[0] || null)}
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {/* STEP 2 — Job */}
+          {(step >= 2 || hasSource) && unlockedThrough >= 2 ? (
+            <section>
+              <h2 className="text-xl font-semibold tracking-tight">Target job</h2>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                Paste the job description for the role you&apos;re applying to.
+              </p>
+              <textarea
+                value={jobDescription}
+                onChange={(e) => setJobDescription(e.target.value)}
+                rows={10}
+                className="mt-4 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm leading-relaxed outline-none focus:border-[var(--alfred-amber)]"
+                placeholder="Paste the full job description…"
               />
-            </label>
-            <textarea
-              value={rawText}
-              onChange={(e) => setRawText(e.target.value)}
-              placeholder="Or paste resume text…"
-              rows={5}
-              className="mt-3 w-full rounded-md border border-[var(--terminal-border)] bg-[var(--terminal-elevated)] px-3 py-2 font-mono text-xs text-[var(--terminal-white)] outline-none focus:border-[var(--alfred-amber)]"
-            />
-            <button
-              type="button"
-              disabled={!!busy}
-              onClick={parsePastedText}
-              className="mt-2 rounded-md border border-[var(--terminal-border)] px-3 py-1.5 text-sm hover:bg-[var(--terminal-elevated)] disabled:opacity-50"
-            >
-              {busy === "parse" ? "Parsing…" : "Parse pasted text"}
-            </button>
-          </section>
+              <div className="mt-2 flex items-center justify-between text-xs text-[var(--text-muted)]">
+                <span>{jobDescription.length.toLocaleString()} characters</span>
+                {hasJd ? (
+                  <span className="text-[var(--success)]">Ready to analyze</span>
+                ) : (
+                  <span>Need at least 40 characters</span>
+                )}
+              </div>
+              {hasSource && hasJd && step <= 3 && !hasTailored ? (
+                <button
+                  type="button"
+                  disabled={!!busy}
+                  onClick={runAnalysis}
+                  className="mt-5 h-11 rounded-lg bg-[var(--alfred-amber)] px-6 text-sm font-semibold text-[var(--bg)] disabled:opacity-50"
+                >
+                  {busy === "analyze" ? "Analyzing…" : "Analyze application"}
+                </button>
+              ) : null}
+            </section>
+          ) : null}
 
-          <section className="rounded-xl border border-[var(--terminal-border)] bg-[var(--terminal-surface)] p-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--terminal-gray)]">
-              02 — Job Description
-            </h2>
-            <textarea
-              value={jobDescription}
-              onChange={(e) => setJobDescription(e.target.value)}
-              placeholder="Paste the full job description…"
-              rows={8}
-              className="mt-3 w-full rounded-md border border-[var(--terminal-border)] bg-[var(--terminal-elevated)] px-3 py-2 text-sm text-[var(--terminal-white)] outline-none focus:border-[var(--alfred-amber)]"
-            />
-          </section>
+          {/* STEP 3 — Analysis */}
+          {step >= 3 && unlockedThrough >= 3 && (humanAnalysis || score) ? (
+            <section>
+              <h2 className="text-xl font-semibold tracking-tight">Application analysis</h2>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                We compared your experience with the role requirements.
+              </p>
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                  <p className="text-xs text-[var(--text-muted)]">Role alignment</p>
+                  <p className="mt-1 text-3xl font-semibold tabular-nums">
+                    {score?.matchRate ?? "—"}%
+                  </p>
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--elevated)]">
+                    <div
+                      className="h-full rounded-full bg-[var(--alfred-amber)]"
+                      style={{ width: `${score?.matchRate ?? 0}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                  <p className="text-xs text-[var(--text-muted)]">Supported skills</p>
+                  <p className="mt-1 text-3xl font-semibold tabular-nums">
+                    {score?.hits.length ?? 0}
+                    <span className="text-base font-normal text-[var(--text-muted)]">
+                      {" "}
+                      / {(score?.hits.length ?? 0) + (score?.missing.length ?? 0) || "—"}
+                    </span>
+                  </p>
+                </div>
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                  <p className="text-xs text-[var(--text-muted)]">Needs attention</p>
+                  <p className="mt-1 text-3xl font-semibold tabular-nums">
+                    {score?.missing.length ?? humanAnalysis?.needsAttention.length ?? 0}
+                  </p>
+                </div>
+              </div>
+              {humanAnalysis ? (
+                <div className="mt-5 grid gap-4 md:grid-cols-3">
+                  <div>
+                    <p className="text-xs font-semibold text-[var(--success)]">Strong matches</p>
+                    <ul className="mt-2 space-y-1 text-sm text-[var(--text-secondary)]">
+                      {(humanAnalysis.strongMatches.length
+                        ? humanAnalysis.strongMatches
+                        : score?.hits.slice(0, 6) || []
+                      ).map((m) => (
+                        <li key={m}>✓ {m}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-[var(--warning)]">Needs attention</p>
+                    <ul className="mt-2 space-y-1 text-sm text-[var(--text-secondary)]">
+                      {(humanAnalysis.needsAttention.length
+                        ? humanAnalysis.needsAttention
+                        : (score?.missing || []).map((m) => `${m} not found on resume`)
+                      )
+                        .slice(0, 6)
+                        .map((m) => (
+                          <li key={m}>• {m}</li>
+                        ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-[var(--alfred-amber)]">Opportunities</p>
+                    <ul className="mt-2 space-y-1 text-sm text-[var(--text-secondary)]">
+                      {humanAnalysis.opportunities.slice(0, 5).map((m) => (
+                        <li key={m}>• {m}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              ) : null}
+              <p className="mt-3 text-xs text-[var(--text-muted)]">
+                Internal role-alignment metric — not a universal ATS score.
+              </p>
+              {unlockedThrough >= 4 && step === 3 ? (
+                <button
+                  type="button"
+                  onClick={() => setStep(4)}
+                  className="mt-5 h-11 rounded-lg bg-[var(--alfred-amber)] px-6 text-sm font-semibold text-[var(--bg)]"
+                >
+                  Continue to tailor
+                </button>
+              ) : null}
+            </section>
+          ) : null}
 
-          <section className="rounded-xl border border-[var(--terminal-border)] bg-[var(--terminal-surface)] p-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--terminal-gray)]">
-              04 — Tailoring
-            </h2>
-            <div className="mt-3 grid gap-2 sm:grid-cols-3">
-              {(["subtle", "medium", "hard"] as TailorIntensity[]).map((mode) => {
-                const meta = TAILOR_INTENSITY_META[mode];
-                const active = intensity === mode;
-                return (
+          {/* STEP 4 — Tailor */}
+          {unlockedThrough >= 4 && (step === 4 || step === 5) ? (
+            <section>
+              <h2 className="text-xl font-semibold tracking-tight">Tailor resume</h2>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                Choose how aggressively Alfred should restructure around this role.
+              </p>
+              <div className="mt-3 flex items-start gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-xs text-[var(--text-secondary)]">
+                <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--alfred-amber)]" />
+                <p>
+                  <span className="font-medium text-[var(--text)]">Fact protection enabled.</span>{" "}
+                  Unsupported experience, certifications, companies, metrics, or technologies will
+                  not be invented.
+                </p>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                {(["subtle", "medium", "hard"] as TailorIntensity[]).map((mode) => {
+                  const meta = TAILOR_INTENSITY_META[mode];
+                  const active = intensity === mode;
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setIntensity(mode)}
+                      className={`rounded-xl border px-4 py-4 text-left transition ${
+                        active
+                          ? "border-[var(--alfred-amber)] bg-[var(--alfred-amber)]/10"
+                          : "border-[var(--border)] bg-[var(--surface)] hover:border-[var(--border-hover)]"
+                      }`}
+                    >
+                      <p className="text-sm font-semibold">{meta.label}</p>
+                      <p className="mt-1.5 text-xs leading-relaxed text-[var(--text-secondary)]">
+                        {meta.blurb}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-5 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={!!busy}
+                  onClick={() => tailor(intensity)}
+                  className="h-11 rounded-lg bg-[var(--alfred-amber)] px-6 text-sm font-semibold text-[var(--bg)] disabled:opacity-50"
+                >
+                  {busy === "tailor"
+                    ? "Tailoring…"
+                    : `Tailor with ${TAILOR_INTENSITY_META[intensity].label}`}
+                </button>
+                {hasTailored ? (
                   <button
-                    key={mode}
                     type="button"
-                    onClick={() => setIntensity(mode)}
-                    className={`rounded-lg border px-3 py-3 text-left ${
-                      active
-                        ? "border-[var(--alfred-amber)] bg-[var(--alfred-amber)]/10 ring-1 ring-[var(--alfred-amber)]"
-                        : "border-[var(--terminal-border)] bg-[var(--terminal-elevated)] hover:border-[var(--alfred-amber)]/50"
-                    }`}
+                    disabled={!!busy}
+                    onClick={resetToOriginal}
+                    className="h-11 rounded-lg border border-[var(--border)] px-4 text-sm disabled:opacity-50"
                   >
-                    <p className="text-sm font-semibold">{meta.label}</p>
-                    <p className="mt-1 text-xs text-[var(--terminal-gray)]">{meta.blurb}</p>
+                    Reset to original
                   </button>
-                );
-              })}
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={!!busy}
-                onClick={() => tailor(intensity)}
-                className="rounded-md bg-[var(--alfred-amber)] px-4 py-2.5 text-sm font-medium text-[var(--terminal-black)] hover:brightness-110 disabled:opacity-50"
-              >
-                {busy === "tailor"
-                  ? "Working…"
-                  : `Apply ${TAILOR_INTENSITY_META[intensity].label}`}
-              </button>
-              <button
-                type="button"
-                disabled={!!busy || !hasSource}
-                onClick={resetToOriginal}
-                className="rounded-md border border-[var(--terminal-border)] px-4 py-2.5 text-sm font-medium disabled:opacity-50"
-              >
-                Reset to original
-              </button>
-            </div>
-          </section>
-
-          {humanAnalysis ? (
-            <section className="rounded-xl border border-[var(--terminal-border)] bg-[var(--terminal-surface)] p-4">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--terminal-gray)]">
-                03 — Analysis
-              </h2>
-              <p className="mt-1 text-xs text-[var(--terminal-muted)]">Alfred found the following for this role.</p>
-              <div className="mt-3 grid gap-3 md:grid-cols-3">
-                <div>
-                  <p className="text-xs font-semibold text-[var(--success)]">Strong matches</p>
-                  <ul className="mt-1 space-y-1 text-xs text-[var(--terminal-gray)]">
-                    {humanAnalysis.strongMatches.length ? humanAnalysis.strongMatches.map((m) => (
-                      <li key={m}>✓ {m}</li>
-                    )) : <li>None yet</li>}
-                  </ul>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-[var(--warning)]">Needs attention</p>
-                  <ul className="mt-1 space-y-1 text-xs text-[var(--terminal-gray)]">
-                    {humanAnalysis.needsAttention.length ? humanAnalysis.needsAttention.map((m) => (
-                      <li key={m}>• {m}</li>
-                    )) : <li>No major gaps</li>}
-                  </ul>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-[var(--alfred-amber)]">Opportunities</p>
-                  <ul className="mt-1 space-y-1 text-xs text-[var(--terminal-gray)]">
-                    {humanAnalysis.opportunities.slice(0, 5).map((m) => (
-                      <li key={m}>• {m}</li>
-                    ))}
-                  </ul>
-                </div>
+                ) : null}
               </div>
             </section>
           ) : null}
 
-          <section className="rounded-xl border border-[var(--terminal-border)] bg-[var(--terminal-surface)] p-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--terminal-gray)]">
-              05 — Review · Vibe
-            </h2>
-            <p className="mt-1 text-xs text-[var(--terminal-muted)]">
-              Live preview and PDF/DOCX exports use these settings.
-            </p>
-            <label className="mt-3 flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={style.showHeadline}
-                onChange={(e) =>
-                  setStyle((s) => ({ ...s, showHeadline: e.target.checked }))
-                }
-              />
-              Show headline under name
-            </label>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <label className="text-sm">
-                <span className="mb-1 block text-xs font-semibold uppercase text-stone-500">
-                  Font
+          {/* STEP 5 — Review */}
+          {step === 5 && hasTailored ? (
+            <section>
+              <h2 className="text-xl font-semibold tracking-tight">Your resume is ready.</h2>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                Tailored for this role while preserving your original experience.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-4 text-sm">
+                <span>
+                  Role alignment{" "}
+                  <strong className="text-[var(--alfred-amber)]">{score?.matchRate ?? "—"}%</strong>
                 </span>
-                <select
-                  className="w-full rounded-md border border-[var(--terminal-border)] px-3 py-2"
-                  value={style.fontFamily}
-                  onChange={(e) =>
-                    setStyle((s) => ({
-                      ...s,
-                      fontFamily: e.target.value as ResumeStyle["fontFamily"],
-                    }))
-                  }
-                >
-                  <option value="helvetica">Helvetica / Arial (ATS-safe)</option>
-                  <option value="times">Times New Roman</option>
-                  <option value="courier">Courier</option>
-                </select>
-              </label>
-              <label className="text-sm">
-                <span className="mb-1 block text-xs font-semibold uppercase text-stone-500">
-                  Body size ({style.fontSize}pt)
-                </span>
-                <input
-                  type="range"
-                  min={8}
-                  max={12}
-                  step={0.5}
-                  value={style.fontSize}
-                  onChange={(e) =>
-                    setStyle((s) => ({ ...s, fontSize: Number(e.target.value) }))
-                  }
-                  className="mt-2 w-full"
-                />
-              </label>
-            </div>
-          </section>
-
-          <section className="rounded-xl border border-[var(--terminal-border)] bg-[var(--terminal-surface)] p-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--terminal-gray)]">
-              Cover Letter
-            </h2>
-            <p className="mt-1 text-xs text-[var(--terminal-muted)]">
-              Written from your tailored resume + JD. Truthful — no invented stack.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={!!busy}
-                onClick={generateCoverLetter}
-                className="rounded-md bg-[var(--alfred-amber)] px-4 py-2 text-sm font-medium text-[var(--terminal-black)] disabled:opacity-50"
-              >
-                {busy === "cover" ? "Writing…" : "Generate cover letter"}
-              </button>
-              <button
-                type="button"
-                disabled={!coverLetter}
-                onClick={copyCoverLetter}
-                className="rounded-md border border-[var(--terminal-border)] px-4 py-2 text-sm font-medium disabled:opacity-50"
-              >
-                {copied ? "Copied" : "Copy"}
-              </button>
-              <button
-                type="button"
-                disabled={!coverLetter || !!busy}
-                onClick={() => exportCover("pdf")}
-                className="rounded-md border border-[var(--terminal-border)] px-4 py-2 text-sm font-medium disabled:opacity-50"
-              >
-                PDF
-              </button>
-              <button
-                type="button"
-                disabled={!coverLetter || !!busy}
-                onClick={() => exportCover("docx")}
-                className="rounded-md border border-[var(--terminal-border)] px-4 py-2 text-sm font-medium disabled:opacity-50"
-              >
-                DOCX
-              </button>
-            </div>
-            {coverLetter ? (
-              <textarea
-                className="mt-3 w-full rounded-md border border-[var(--terminal-border)] px-3 py-2 text-sm leading-relaxed outline-none focus:border-[var(--alfred-amber)]"
-                rows={14}
-                value={coverLetter}
-                onChange={(e) => setCoverLetter(e.target.value)}
-              />
-            ) : null}
-          </section>
-
-          {error ? (
-            <div className="rounded-lg border border-[var(--error)]/40 bg-[var(--error)]/10 px-4 py-3 text-sm text-red-300">
-              {error}
-            </div>
-          ) : null}
-
-          {score ? (
-            <section className="rounded-xl border border-[var(--terminal-border)] bg-[var(--terminal-surface)] p-4">
-              <div className="flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--terminal-gray)]">
-                    ATS score
-                    <span className="ml-2 rounded bg-[var(--alfred-amber)]/20 px-2 py-0.5 text-[10px] font-semibold uppercase text-[var(--alfred-amber)]">
-                      live
-                    </span>
-                  </h2>
-                  <p className="mt-1 text-3xl font-semibold tracking-tight">
-                    {score.matchRate}%
-                    <span className="ml-2 text-sm font-normal text-stone-500">
-                      target {score.target}%
-                    </span>
-                  </p>
-                  <p className="text-xs text-[var(--terminal-muted)]">
-                    Skills {score.keywordScore}% · TF-IDF {score.similarity ?? "—"}% · Format{" "}
-                    {score.formatScore}%
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    disabled={!!busy}
-                    onClick={() => exportFile("pdf")}
-                    className="rounded-md bg-[var(--terminal-elevated)] px-4 py-2 text-sm font-medium text-[var(--terminal-black)] disabled:opacity-50"
-                  >
-                    {busy === "pdf" ? "Building…" : "Download PDF"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!!busy}
-                    onClick={() => exportFile("docx")}
-                    className="rounded-md border border-[var(--terminal-border)] bg-white px-4 py-2 text-sm font-medium disabled:opacity-50"
-                  >
-                    {busy === "docx" ? "Building…" : "Download DOCX"}
-                  </button>
-                </div>
+                <span className="text-[var(--success)]">Fact integrity ✓ Passed</span>
+                <span className="text-[var(--success)]">ATS-friendly structure ✓ Ready</span>
               </div>
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <div>
-                  <p className="text-xs font-semibold uppercase text-[var(--alfred-amber)]">Skill overlaps</p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {score.hits.length ? (
-                      score.hits.map((h) => (
-                        <span
-                          key={h}
-                          className="rounded bg-[var(--success)]/15 px-2 py-0.5 text-xs text-green-300"
+              <div className="mt-5 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={!!busy}
+                  onClick={() => exportFile("pdf")}
+                  className="inline-flex h-11 items-center gap-2 rounded-lg bg-[var(--alfred-amber)] px-5 text-sm font-semibold text-[var(--bg)] disabled:opacity-50"
+                >
+                  <Download className="h-4 w-4" />
+                  {busy === "pdf" ? "Building…" : "Download PDF"}
+                </button>
+                <button
+                  type="button"
+                  disabled={!!busy}
+                  onClick={() => exportFile("docx")}
+                  className="inline-flex h-11 items-center gap-2 rounded-lg border border-[var(--border)] px-5 text-sm disabled:opacity-50"
+                >
+                  {busy === "docx" ? "Building…" : "Download DOCX"}
+                </button>
+                <button
+                  type="button"
+                  disabled={!!busy}
+                  onClick={() => tailor(intensity)}
+                  className="inline-flex h-11 items-center gap-2 rounded-lg border border-[var(--border)] px-4 text-sm disabled:opacity-50"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Regenerate
+                </button>
+              </div>
+
+              <div className="mt-10 border-t border-[var(--border)] pt-8">
+                <div className="flex gap-4 border-b border-[var(--border)]">
+                  {(["resume", "cover"] as DocTab[]).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setDocTab(t)}
+                      className={`pb-2 text-sm capitalize ${
+                        docTab === t
+                          ? "border-b-2 border-[var(--alfred-amber)] font-medium text-[var(--alfred-amber)]"
+                          : "text-[var(--text-muted)]"
+                      }`}
+                    >
+                      {t === "resume" ? "Resume" : "Cover Letter"}
+                    </button>
+                  ))}
+                </div>
+                {docTab === "cover" ? (
+                  <div className="mt-5">
+                    {!coverLetter ? (
+                      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-6 py-10 text-center">
+                        <h3 className="text-lg font-medium">Make the application complete.</h3>
+                        <p className="mx-auto mt-2 max-w-md text-sm text-[var(--text-secondary)]">
+                          Generate a role-specific cover letter from your tailored resume and target
+                          job description.
+                        </p>
+                        <button
+                          type="button"
+                          disabled={!!busy}
+                          onClick={generateCoverLetter}
+                          className="mt-5 h-11 rounded-lg bg-[var(--alfred-amber)] px-5 text-sm font-semibold text-[var(--bg)] disabled:opacity-50"
                         >
-                          {h}
-                        </span>
-                      ))
+                          {busy === "cover" ? "Writing…" : "Generate Cover Letter"}
+                        </button>
+                      </div>
                     ) : (
-                      <span className="text-xs text-[var(--terminal-muted)]">No stack overlaps yet</span>
+                      <>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={copyCoverLetter}
+                            className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm"
+                          >
+                            {copied ? "Copied" : "Copy"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => exportCover("pdf")}
+                            className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm"
+                          >
+                            Download PDF
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => exportCover("docx")}
+                            className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm"
+                          >
+                            Download DOCX
+                          </button>
+                          <button
+                            type="button"
+                            onClick={generateCoverLetter}
+                            className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm"
+                          >
+                            Regenerate
+                          </button>
+                        </div>
+                        <textarea
+                          className="mt-4 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm leading-relaxed"
+                          rows={16}
+                          value={coverLetter}
+                          onChange={(e) => setCoverLetter(e.target.value)}
+                        />
+                      </>
                     )}
                   </div>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase text-[var(--warning)]">
-                    Skill gaps (not on resume)
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {score.missing.length ? (
-                      score.missing.map((h) => (
-                        <span
-                          key={h}
-                          className="rounded bg-[var(--warning)]/15 px-2 py-0.5 text-xs text-amber-200"
-                        >
-                          {h}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-xs text-[var(--terminal-muted)]">No major stack gaps</span>
-                    )}
+                ) : (
+                  <div className="mt-4 space-y-3 text-sm text-[var(--text-secondary)]">
+                    <p>Use the resume preview panel to switch Original / Tailored / Compare.</p>
+                    <label className="flex items-center gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={style.showHeadline}
+                        onChange={(e) =>
+                          setStyle((s) => ({ ...s, showHeadline: e.target.checked }))
+                        }
+                      />
+                      Show headline under name
+                    </label>
                   </div>
-                </div>
+                )}
               </div>
             </section>
           ) : null}
         </div>
 
-        <aside className="space-y-3 xl:sticky xl:top-4 xl:self-start">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--terminal-gray)]">
-              Live view
+        {/* Preview column */}
+        <aside
+          className={`border-[var(--border)] bg-[var(--elevated)]/40 lg:sticky lg:top-[57px] lg:h-[calc(100vh-57px)] lg:overflow-y-auto lg:border-l ${
+            mobileTab === "workspace" ? "hidden lg:block" : ""
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] px-4 py-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+              Resume preview
             </h2>
-            <div className="ml-auto flex gap-1 rounded-md border border-[var(--terminal-border)] bg-[var(--terminal-surface)] p-0.5">
-              {(["preview", "compare", "edit"] as ViewMode[]).map((m) => (
+            <div className="flex rounded-lg border border-[var(--border)] bg-[var(--surface)] p-0.5">
+              {(["original", "tailored", "compare", "edit"] as ViewMode[]).map((m) => (
                 <button
                   key={m}
                   type="button"
                   onClick={() => setViewMode(m)}
-                  className={`rounded px-2 py-1 text-xs font-medium capitalize ${
-                    viewMode === m ? "bg-[var(--terminal-elevated)] text-[var(--terminal-black)]" : "text-[var(--terminal-gray)]"
+                  className={`rounded-md px-2 py-1 text-[11px] capitalize ${
+                    viewMode === m
+                      ? "bg-[var(--elevated)] text-[var(--text)]"
+                      : "text-[var(--text-muted)]"
                   }`}
                 >
                   {m}
@@ -857,61 +1054,66 @@ export function Workspace({ userName, userEmail }: Props) {
               ))}
             </div>
           </div>
-
-          {viewMode === "preview" ? (
-            <ResumeCard
-              resume={resume}
-              style={style}
-              label={
-                appliedIntensity
-                  ? `Live preview · ${appliedIntensity}`
-                  : "Live preview · source"
-              }
-            />
-          ) : null}
-
-          {viewMode === "compare" ? (
-            <div className="grid gap-3">
-              <ResumeCard resume={sourceResume} style={style} label="Original" />
-              <ResumeCard
+          <div className="p-4">
+            {!hasSource ? (
+              <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-[var(--border)] text-sm text-[var(--text-muted)]">
+                Upload a resume to preview
+              </div>
+            ) : viewMode === "original" ? (
+              <ResumePaper resume={sourceResume} style={style} label="Original" />
+            ) : viewMode === "tailored" ? (
+              <ResumePaper
                 resume={resume}
                 style={style}
-                label={appliedIntensity ? `Tailored · ${appliedIntensity}` : "Tailored"}
+                label={
+                  appliedIntensity
+                    ? `Tailored · ${TAILOR_INTENSITY_META[appliedIntensity].label}`
+                    : "Current"
+                }
               />
-            </div>
-          ) : null}
-
-          {viewMode === "edit" ? (
-            <div className="rounded-xl border border-[var(--terminal-border)] bg-[var(--terminal-surface)] p-4">
+            ) : viewMode === "compare" ? (
+              <div className="space-y-4">
+                <ResumePaper resume={sourceResume} style={style} label="Original" />
+                <ResumePaper
+                  resume={resume}
+                  style={style}
+                  label={
+                    appliedIntensity
+                      ? `Tailored · ${TAILOR_INTENSITY_META[appliedIntensity].label}`
+                      : "Tailored"
+                  }
+                />
+              </div>
+            ) : (
               <EditPanel
                 resume={resume}
                 setResume={setResume}
                 updateContactField={updateContactField}
                 setError={setError}
               />
-            </div>
-          ) : null}
-
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={!!busy || !hasSource}
-              onClick={() => exportFile("pdf")}
-              className="flex-1 rounded-md bg-[var(--terminal-elevated)] px-3 py-2 text-sm font-medium text-[var(--terminal-black)] disabled:opacity-50"
-            >
-              PDF
-            </button>
-            <button
-              type="button"
-              disabled={!!busy || !hasSource}
-              onClick={() => exportFile("docx")}
-              className="flex-1 rounded-md border border-[var(--terminal-border)] bg-white px-3 py-2 text-sm font-medium disabled:opacity-50"
-            >
-              DOCX
-            </button>
+            )}
           </div>
         </aside>
       </main>
+
+      {/* Sticky action bar */}
+      {hasSource && hasJd && unlockedThrough >= 4 && step === 4 ? (
+        <div className="sticky bottom-0 z-20 border-t border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur">
+          <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-3 px-4 py-3 lg:px-8">
+            <p className="text-xs text-[var(--text-muted)]">
+              {TAILOR_INTENSITY_META[intensity].label} · Fact protection on
+            </p>
+            <button
+              type="button"
+              disabled={!!busy}
+              onClick={() => tailor(intensity)}
+              className="h-10 rounded-lg bg-[var(--alfred-amber)] px-5 text-sm font-semibold text-[var(--bg)] disabled:opacity-50"
+            >
+              Tailor Resume →
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -931,47 +1133,43 @@ function EditPanel({
   setError: (v: string | null) => void;
 }) {
   return (
-    <div className="grid gap-2">
+    <div className="grid gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+      {(
+        [
+          ["fullName", "Full name"],
+          ["email", "Email"],
+          ["phone", "Phone"],
+          ["location", "Location"],
+        ] as const
+      ).map(([field, ph]) => (
+        <input
+          key={field}
+          className="rounded-lg border border-[var(--border)] bg-[var(--elevated)] px-3 py-2 text-sm"
+          value={
+            field === "location"
+              ? resume.contact.location || ""
+              : resume.contact[field]
+          }
+          onChange={(e) => updateContactField(field, e.target.value)}
+          placeholder={ph}
+        />
+      ))}
       <input
-        className="rounded-md border border-[var(--terminal-border)] px-3 py-2 text-sm"
-        value={resume.contact.fullName}
-        onChange={(e) => updateContactField("fullName", e.target.value)}
-        placeholder="Full name"
-      />
-      <input
-        className="rounded-md border border-[var(--terminal-border)] px-3 py-2 text-sm"
-        value={resume.contact.email}
-        onChange={(e) => updateContactField("email", e.target.value)}
-        placeholder="Email"
-      />
-      <input
-        className="rounded-md border border-[var(--terminal-border)] px-3 py-2 text-sm"
-        value={resume.contact.phone}
-        onChange={(e) => updateContactField("phone", e.target.value)}
-        placeholder="Phone"
-      />
-      <input
-        className="rounded-md border border-[var(--terminal-border)] px-3 py-2 text-sm"
-        value={resume.contact.location || ""}
-        onChange={(e) => updateContactField("location", e.target.value)}
-        placeholder="Location"
-      />
-      <input
-        className="rounded-md border border-[var(--terminal-border)] px-3 py-2 text-sm"
+        className="rounded-lg border border-[var(--border)] bg-[var(--elevated)] px-3 py-2 text-sm"
         value={resume.headline}
         onChange={(e) => setResume((r) => ({ ...r, headline: e.target.value }))}
         placeholder="Headline"
       />
       <textarea
-        className="rounded-md border border-[var(--terminal-border)] px-3 py-2 text-sm"
+        className="rounded-lg border border-[var(--border)] bg-[var(--elevated)] px-3 py-2 text-sm"
         rows={5}
         value={resume.summary}
         onChange={(e) => setResume((r) => ({ ...r, summary: e.target.value }))}
         placeholder="Summary"
       />
       <textarea
-        className="rounded-md border border-[var(--terminal-border)] px-3 py-2 font-mono text-xs"
-        rows={12}
+        className="rounded-lg border border-[var(--border)] bg-[var(--elevated)] px-3 py-2 font-mono text-xs"
+        rows={10}
         value={JSON.stringify(resume, null, 2)}
         onChange={(e) => {
           try {
