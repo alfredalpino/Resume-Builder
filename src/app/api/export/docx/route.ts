@@ -1,6 +1,7 @@
 import { apiError, requireSession } from "@/lib/api";
 import { buildDocxBuffer } from "@/lib/export/docx";
 import { StructuredResumeSchema } from "@/lib/schema";
+import { DEFAULT_RESUME_STYLE, ResumeStyleSchema } from "@/lib/style";
 
 export const runtime = "nodejs";
 
@@ -11,7 +12,10 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const resume = StructuredResumeSchema.parse(body.resume);
-    const buffer = await buildDocxBuffer(resume);
+    const style = ResumeStyleSchema.catch(DEFAULT_RESUME_STYLE).parse(
+      body.style ?? DEFAULT_RESUME_STYLE,
+    );
+    const buffer = await buildDocxBuffer(resume, style);
     const filename = `${resume.contact.fullName.replace(/\s+/g, "_") || "Resume"}_ATS.docx`;
 
     return new Response(new Uint8Array(buffer), {

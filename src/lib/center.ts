@@ -8,6 +8,7 @@ import {
   analyzeJobDescription,
   detectResumeDomain,
   normalize,
+  pickBestTitle,
   termInText,
   type JdAnalysis,
   type ResumeDomain,
@@ -272,18 +273,14 @@ function buildHeadlineParts(
   distance: PivotDistance,
   evidenced: string[],
 ): string[] {
-  const target =
-    analysis.titleHints[0] ||
-    (analysis.domain === "ai"
-      ? "Software / AI Engineer"
-      : analysis.domain === "software"
-        ? "Software Engineer"
-        : analysis.domain === "support"
-          ? "Customer / Tech Support Specialist"
-          : "Professional");
+  const target = pickBestTitle(analysis.titleHints, analysis.domain);
 
   if (distance === "hard") {
-    return [`Aspiring ${target.replace(/^Aspiring\s+/i, "")}`, "User-Facing Problem Solver", "Fast Learner"];
+    return [
+      `Aspiring ${target.replace(/^Aspiring\s+/i, "")}`,
+      "User-Facing Problem Solver",
+      "Fast Learner",
+    ];
   }
 
   const stack = evidenced.slice(0, 4);
@@ -319,9 +316,7 @@ function buildSummary(
   transferables: string[],
   lex: LexRule[],
 ): string {
-  const target =
-    analysis.titleHints[0] ||
-    (analysis.domain === "ai" ? "Software / AI Engineer" : "Software Engineer");
+  const target = pickBestTitle(analysis.titleHints, analysis.domain);
   const themeLine = themes.slice(0, 4).join("; ");
   const stackLine = evidenced.slice(0, 6).join(", ");
 

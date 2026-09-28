@@ -9,72 +9,94 @@ import {
   pdf,
 } from "@react-pdf/renderer";
 import type { StructuredResume } from "@/lib/schema";
+import {
+  DEFAULT_RESUME_STYLE,
+  pdfFontFamily,
+  type ResumeStyle,
+} from "@/lib/style";
 
-const styles = StyleSheet.create({
-  page: {
-    paddingTop: 32,
-    paddingBottom: 32,
-    paddingHorizontal: 40,
-    fontFamily: "Helvetica",
-    fontSize: 9.5,
-    lineHeight: 1.3,
-    color: "#111111",
-  },
-  name: {
-    fontSize: 16,
-    fontFamily: "Helvetica-Bold",
-    textAlign: "center",
-    letterSpacing: 0.4,
-    marginBottom: 3,
-  },
-  headline: {
-    fontSize: 10,
-    fontFamily: "Helvetica-Bold",
-    textAlign: "center",
-    color: "#222222",
-    marginBottom: 3,
-  },
-  contact: {
-    fontSize: 8.5,
-    textAlign: "center",
-    marginBottom: 8,
-    color: "#222222",
-  },
-  contactLink: {
-    color: "#0B57D0",
-    textDecoration: "none",
-  },
-  section: {
-    fontSize: 10,
-    fontFamily: "Helvetica-Bold",
-    marginTop: 8,
-    marginBottom: 3,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    borderBottomWidth: 1,
-    borderBottomColor: "#111111",
-    paddingBottom: 2,
-  },
-  body: {
-    marginBottom: 2,
-    textAlign: "justify",
-  },
-  jobHeader: {
-    fontFamily: "Helvetica-Bold",
-    fontSize: 9.5,
-    marginTop: 4,
-    marginBottom: 1,
-  },
-  bullet: {
-    marginLeft: 8,
-    marginBottom: 1.5,
-  },
-  skillLabel: {
-    fontFamily: "Helvetica-Bold",
-  },
-});
+function makeStyles(style: ResumeStyle) {
+  const fonts = pdfFontFamily(style);
+  const body = style.fontSize;
+  const name = body + 6.5;
+  const section = body + 0.5;
+  const contact = Math.max(8, body - 1);
+  const headline = body + 0.5;
 
-function ContactLine({ resume }: { resume: StructuredResume }) {
+  return StyleSheet.create({
+    page: {
+      paddingTop: 32,
+      paddingBottom: 32,
+      paddingHorizontal: 40,
+      fontFamily: fonts.regular,
+      fontSize: body,
+      lineHeight: 1.35,
+      color: "#111111",
+    },
+    name: {
+      fontSize: name,
+      fontFamily: fonts.bold,
+      textAlign: "center",
+      letterSpacing: 0.4,
+      marginBottom: 3,
+    },
+    headline: {
+      fontSize: headline,
+      fontFamily: fonts.bold,
+      textAlign: "center",
+      color: "#222222",
+      marginBottom: 3,
+    },
+    contact: {
+      fontSize: contact,
+      textAlign: "center",
+      marginBottom: 10,
+      color: "#222222",
+    },
+    contactLink: {
+      color: "#0B57D0",
+      textDecoration: "none",
+    },
+    section: {
+      fontSize: section,
+      fontFamily: fonts.bold,
+      marginTop: 10,
+      marginBottom: 4,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+      borderBottomWidth: 1,
+      borderBottomColor: "#111111",
+      paddingBottom: 2,
+    },
+    body: {
+      marginBottom: 3,
+      textAlign: "justify",
+    },
+    jobHeader: {
+      fontFamily: fonts.bold,
+      fontSize: body,
+      marginTop: 5,
+      marginBottom: 1,
+    },
+    meta: {
+      fontSize: Math.max(8, body - 1),
+      marginBottom: 2,
+      color: "#333333",
+    },
+    bullet: {
+      marginLeft: 10,
+      marginBottom: 2,
+    },
+  });
+}
+
+function ContactLine({
+  resume,
+  styles,
+}: {
+  resume: StructuredResume;
+  styles: ReturnType<typeof makeStyles>;
+}) {
   const plain: string[] = [];
   if (resume.contact.location) plain.push(resume.contact.location);
   if (resume.contact.email) plain.push(resume.contact.email);
@@ -99,7 +121,16 @@ function ContactLine({ resume }: { resume: StructuredResume }) {
   return <Text style={styles.contact}>{nodes}</Text>;
 }
 
-function ResumeDocument({ resume }: { resume: StructuredResume }) {
+function ResumeDocument({
+  resume,
+  style,
+}: {
+  resume: StructuredResume;
+  style: ResumeStyle;
+}) {
+  const styles = makeStyles(style);
+  const showHeadline = style.showHeadline && Boolean(resume.headline?.trim());
+
   return (
     <Document
       title={`${resume.contact.fullName} Resume`}
@@ -108,10 +139,8 @@ function ResumeDocument({ resume }: { resume: StructuredResume }) {
     >
       <Page size="LETTER" style={styles.page}>
         <Text style={styles.name}>{resume.contact.fullName.toUpperCase()}</Text>
-        {resume.headline ? (
-          <Text style={styles.headline}>{resume.headline}</Text>
-        ) : null}
-        <ContactLine resume={resume} />
+        {showHeadline ? <Text style={styles.headline}>{resume.headline}</Text> : null}
+        <ContactLine resume={resume} styles={styles} />
 
         {resume.summary ? (
           <View>
@@ -150,7 +179,7 @@ function ResumeDocument({ resume }: { resume: StructuredResume }) {
                 <Text style={styles.jobHeader}>
                   {`${job.company} — ${job.title}`}
                 </Text>
-                <Text style={{ fontSize: 9, marginBottom: 2, color: "#333" }}>
+                <Text style={styles.meta}>
                   {`${job.start} – ${job.end}${job.location ? `  ·  ${job.location}` : ""}`}
                 </Text>
                 {job.bullets.map((b, i) => (
@@ -213,8 +242,50 @@ function ResumeDocument({ resume }: { resume: StructuredResume }) {
   );
 }
 
-export async function buildPdfBuffer(resume: StructuredResume): Promise<Buffer> {
-  const instance = pdf(<ResumeDocument resume={resume} />);
+export async function buildPdfBuffer(
+  resume: StructuredResume,
+  style: ResumeStyle = DEFAULT_RESUME_STYLE,
+): Promise<Buffer> {
+  const instance = pdf(<ResumeDocument resume={resume} style={style} />);
+  const blob = await instance.toBlob();
+  const ab = await blob.arrayBuffer();
+  return Buffer.from(ab);
+}
+
+export async function buildCoverLetterPdfBuffer(
+  letter: string,
+  authorName: string,
+  style: ResumeStyle = DEFAULT_RESUME_STYLE,
+): Promise<Buffer> {
+  const fonts = pdfFontFamily(style);
+  const styles = StyleSheet.create({
+    page: {
+      paddingTop: 48,
+      paddingBottom: 48,
+      paddingHorizontal: 54,
+      fontFamily: fonts.regular,
+      fontSize: style.fontSize,
+      lineHeight: 1.45,
+      color: "#111111",
+    },
+    para: { marginBottom: 10 },
+  });
+
+  const paragraphs = letter.split(/\n\n+/);
+
+  const doc = (
+    <Document title={`${authorName} Cover Letter`} author={authorName}>
+      <Page size="LETTER" style={styles.page}>
+        {paragraphs.map((block, i) => (
+          <Text key={i} style={styles.para}>
+            {block}
+          </Text>
+        ))}
+      </Page>
+    </Document>
+  );
+
+  const instance = pdf(doc);
   const blob = await instance.toBlob();
   const ab = await blob.arrayBuffer();
   return Buffer.from(ab);

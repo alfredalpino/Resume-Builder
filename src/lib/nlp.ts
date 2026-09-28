@@ -76,7 +76,32 @@ const SOFT_WHITELIST = new Set(
 );
 
 const ROLE_RE =
-  /\b((?:Senior|Junior|Staff|Principal|Lead|Associate)?\s?(?:Software|Network|Security|Data|ML|AI|Product|Customer|Support|Sales|Marketing|DevOps|Cloud|Frontend|Backend|Full[- ]?Stack|Voice|Non[- ]?Voice)?\s?(?:Engineer|Developer|Analyst|Manager|Specialist|Representative|Associate|Executive|Designer|Architect|Administrator|Consultant|Intern|Agent)s?)\b/gi;
+  /\b((?:Senior|Junior|Staff|Principal|Lead|Associate)\s+)?((?:Software|Network|Security|Data|ML|AI|Product|Customer|Support|Sales|Marketing|DevOps|Cloud|Frontend|Backend|Full[- ]?Stack|Voice|Non[- ]?Voice)\s+)?(Engineer|Developer|Analyst|Manager|Specialist|Representative|Associate|Executive|Designer|Architect|Administrator|Consultant|Intern)s?\b/gi;
+
+function isValidTitleHint(raw: string): boolean {
+  const t = raw.trim();
+  if (!t || t.length < 5) return false;
+  // Reject bare role nouns like "Agent", "Engineer", "Agents"
+  if (/^(agents?|engineers?|developers?|managers?|specialists?|associates?|interns?)$/i.test(t)) {
+    return false;
+  }
+  // Prefer multi-word titles
+  if (t.split(/\s+/).length < 2 && !/developer|engineer|analyst/i.test(t)) return false;
+  return true;
+}
+
+function pickBestTitle(titleHints: string[], domain: ResumeDomain): string {
+  const good = titleHints.filter(isValidTitleHint);
+  const preferred = good.find((t) =>
+    /software|full.?stack|frontend|backend|ai |ml |data |network|devops|product engineer/i.test(t),
+  );
+  if (preferred) return preferred;
+  if (good[0]) return good[0];
+  if (domain === "ai") return "Software / AI Engineer";
+  if (domain === "software") return "Software Engineer";
+  if (domain === "support") return "Customer Support Specialist";
+  return "Professional";
+}
 
 export function normalize(text: string): string {
   return text
@@ -268,10 +293,12 @@ export function analyzeJobDescription(jdText: string): JdAnalysis {
   thinking.push(`Detected JD domain: ${domain}.`);
 
   const titleHints = uniqueRanked(
-    [...text.matchAll(ROLE_RE)].map((m) => m[1].trim()),
+    [...text.matchAll(ROLE_RE)].map((m) =>
+      [m[1], m[2], m[3]].filter(Boolean).join(" ").replace(/\s+/g, " ").trim(),
+    ),
     companyHints,
     8,
-  );
+  ).filter(isValidTitleHint);
   const tools = uniqueRanked(extractLexiconHits(text), companyHints, 30);
   const mustHave = uniqueRanked(
     [...sectionTerms(text, "must"), ...tools.slice(0, 12)],
@@ -415,4 +442,4 @@ export function detectResumeDomain(resumeText: string): ResumeDomain {
   return detectDomain(resumeText);
 }
 
-export { TECH_LEXICON };
+export { TECH_LEXICON, pickBestTitle, isValidTitleHint };

@@ -1,20 +1,30 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import type { AtsScore, StructuredResume } from "@/lib/schema";
 import { emptyResume } from "@/lib/schema";
 import { SignOutButton } from "@/components/auth-buttons";
+import { TAILOR_INTENSITY_META, type TailorIntensity } from "@/lib/center";
 import {
-  TAILOR_INTENSITY_META,
-  type TailorIntensity,
-} from "@/lib/center";
+  DEFAULT_RESUME_STYLE,
+  previewFontFamily,
+  type ResumeStyle,
+} from "@/lib/style";
 
 type Props = {
   userName?: string | null;
   userEmail?: string | null;
 };
 
-type HeadlineToggle = { label: string; enabled: boolean };
 type ViewMode = "preview" | "compare" | "edit";
 
 async function readError(res: Response): Promise<string> {
@@ -38,29 +48,49 @@ function downloadBlob(blob: Blob, filename: string) {
 function ResumeCard({
   resume,
   label,
+  style,
 }: {
   resume: StructuredResume;
   label: string;
+  style: ResumeStyle;
 }) {
+  const css: CSSProperties = {
+    fontFamily: previewFontFamily(style),
+    fontSize: `${style.fontSize}px`,
+    lineHeight: 1.4,
+  };
+  const showHeadline = style.showHeadline && Boolean(resume.headline?.trim());
+
   return (
-    <article className="max-h-[min(78vh,880px)] overflow-auto rounded-md border border-stone-200 bg-white p-6 text-[10.5px] leading-[1.35] text-[#111] shadow-inner">
-      <p className="mb-2 text-center text-[9px] font-semibold uppercase tracking-wider text-teal-800">
+    <article
+      style={css}
+      className="max-h-[min(78vh,880px)] overflow-auto rounded-md border border-stone-200 bg-white p-6 text-[#111] shadow-inner"
+    >
+      <p
+        className="mb-2 text-center font-semibold uppercase tracking-wider text-teal-800"
+        style={{ fontSize: Math.max(8, style.fontSize - 1) }}
+      >
         {label}
       </p>
-      <h1 className="text-center text-[16px] font-bold tracking-wide">
+      <h1
+        className="text-center font-bold tracking-wide"
+        style={{ fontSize: style.fontSize + 7 }}
+      >
         {resume.contact.fullName.toUpperCase()}
       </h1>
-      {resume.headline ? (
-        <p className="mt-1 text-center text-[10px] font-semibold">{resume.headline}</p>
+      {showHeadline ? (
+        <p className="mt-1 text-center font-semibold" style={{ fontSize: style.fontSize + 0.5 }}>
+          {resume.headline}
+        </p>
       ) : null}
-      <p className="mt-1 text-center text-[9px]">
+      <p className="mt-1 text-center" style={{ fontSize: Math.max(8, style.fontSize - 1) }}>
         {[resume.contact.location, resume.contact.email, resume.contact.phone]
           .filter(Boolean)
           .join("  ·  ")}
       </p>
       {resume.summary ? (
         <>
-          <h3 className="mt-3 border-b border-[#111] pb-0.5 text-[10px] font-bold uppercase">
+          <h3 className="mt-3 border-b border-[#111] pb-0.5 font-bold uppercase tracking-wide">
             Professional Summary
           </h3>
           <p className="mt-1 text-justify">{resume.summary}</p>
@@ -68,7 +98,7 @@ function ResumeCard({
       ) : null}
       {resume.skills.length ? (
         <>
-          <h3 className="mt-3 border-b border-[#111] pb-0.5 text-[10px] font-bold uppercase">
+          <h3 className="mt-3 border-b border-[#111] pb-0.5 font-bold uppercase tracking-wide">
             Skills
           </h3>
           {resume.skills.map((g) => (
@@ -81,7 +111,7 @@ function ResumeCard({
       ) : null}
       {resume.experience.length ? (
         <>
-          <h3 className="mt-3 border-b border-[#111] pb-0.5 text-[10px] font-bold uppercase">
+          <h3 className="mt-3 border-b border-[#111] pb-0.5 font-bold uppercase tracking-wide">
             Experience
           </h3>
           {resume.experience.map((job, idx) => (
@@ -89,8 +119,9 @@ function ResumeCard({
               <p className="font-bold">
                 {job.company} — {job.title}
               </p>
-              <p className="text-[9px] text-stone-600">
+              <p style={{ fontSize: Math.max(8, style.fontSize - 1) }} className="text-stone-600">
                 {job.start} – {job.end}
+                {job.location ? `  ·  ${job.location}` : ""}
               </p>
               <ul className="mt-0.5 pl-2">
                 {job.bullets.map((b, i) => (
@@ -103,7 +134,7 @@ function ResumeCard({
       ) : null}
       {resume.projects.length ? (
         <>
-          <h3 className="mt-3 border-b border-[#111] pb-0.5 text-[10px] font-bold uppercase">
+          <h3 className="mt-3 border-b border-[#111] pb-0.5 font-bold uppercase tracking-wide">
             Projects
           </h3>
           {resume.projects.map((p, idx) => (
@@ -120,7 +151,7 @@ function ResumeCard({
       ) : null}
       {resume.education.length ? (
         <>
-          <h3 className="mt-3 border-b border-[#111] pb-0.5 text-[10px] font-bold uppercase">
+          <h3 className="mt-3 border-b border-[#111] pb-0.5 font-bold uppercase tracking-wide">
             Education
           </h3>
           {resume.education.map((e, idx) => (
@@ -147,8 +178,10 @@ export function Workspace({ userName, userEmail }: Props) {
   const [fileName, setFileName] = useState<string | null>(null);
   const [intensity, setIntensity] = useState<TailorIntensity>("medium");
   const [appliedIntensity, setAppliedIntensity] = useState<TailorIntensity | null>(null);
-  const [headlineToggles, setHeadlineToggles] = useState<HeadlineToggle[]>([]);
+  const [style, setStyle] = useState<ResumeStyle>(DEFAULT_RESUME_STYLE);
   const [viewMode, setViewMode] = useState<ViewMode>("preview");
+  const [coverLetter, setCoverLetter] = useState("");
+  const [copied, setCopied] = useState(false);
   const scoreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -157,25 +190,22 @@ export function Workspace({ userName, userEmail }: Props) {
     [sourceResume],
   );
 
-  const liveScore = useCallback(
-    async (r: StructuredResume, jd: string) => {
-      if (!jd.trim() || jd.trim().length < 40) return;
-      if (r.contact.fullName === "Your Name" && !r.summary) return;
-      try {
-        const res = await fetch("/api/score", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ resume: r, jobDescription: jd }),
-        });
-        if (!res.ok) return;
-        const data = (await res.json()) as { score: AtsScore };
-        setScore(data.score);
-      } catch {
-        /* ignore live score errors */
-      }
-    },
-    [],
-  );
+  const liveScore = useCallback(async (r: StructuredResume, jd: string) => {
+    if (!jd.trim() || jd.trim().length < 40) return;
+    if (r.contact.fullName === "Your Name" && !r.summary) return;
+    try {
+      const res = await fetch("/api/score", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resume: r, jobDescription: jd }),
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as { score: AtsScore };
+      setScore(data.score);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   useEffect(() => {
     if (scoreTimer.current) clearTimeout(scoreTimer.current);
@@ -187,25 +217,12 @@ export function Workspace({ userName, userEmail }: Props) {
     };
   }, [resume, jobDescription, liveScore]);
 
-  function applyHeadlineToggles(toggles: HeadlineToggle[]) {
-    setHeadlineToggles(toggles);
-    const headline = toggles
-      .filter((t) => t.enabled)
-      .map((t) => t.label)
-      .join(" | ");
-    setResume((r) => ({ ...r, headline }));
-  }
-
   function adoptParsed(parsed: StructuredResume, text?: string) {
     setSourceResume(structuredClone(parsed));
     setResume(parsed);
     setScore(null);
     setAppliedIntensity(null);
-    setHeadlineToggles(
-      parsed.headline
-        ? parsed.headline.split(/\s*\|\s*/).map((label) => ({ label, enabled: true }))
-        : [],
-    );
+    setCoverLetter("");
     setViewMode("preview");
     if (text !== undefined) setRawText(text);
   }
@@ -294,16 +311,10 @@ export function Workspace({ userName, userEmail }: Props) {
         resume: StructuredResume;
         score: AtsScore;
         intensity?: TailorIntensity;
-        headlineParts?: string[];
       };
       setResume(data.resume);
       setScore(data.score);
       setAppliedIntensity(data.intensity || nextIntensity);
-      const parts = (data.headlineParts?.length
-        ? data.headlineParts
-        : data.resume.headline.split(/\s*\|\s*/).filter(Boolean)
-      ).map((label) => ({ label, enabled: true }));
-      setHeadlineToggles(parts);
       setViewMode("compare");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Tailoring failed");
@@ -313,14 +324,75 @@ export function Workspace({ userName, userEmail }: Props) {
     }
   }
 
+  async function generateCoverLetter() {
+    if (!jobDescription.trim() || !hasSource) {
+      setError("Need a resume and job description for the cover letter");
+      return;
+    }
+    setBusy("cover");
+    setError(null);
+    startProgress();
+    try {
+      const res = await fetch("/api/cover-letter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resume,
+          jobDescription,
+          intensity: appliedIntensity || intensity,
+        }),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      const data = (await res.json()) as { letter: string };
+      setCoverLetter(data.letter);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Cover letter failed");
+    } finally {
+      stopProgress();
+      setBusy(null);
+    }
+  }
+
+  async function copyCoverLetter() {
+    if (!coverLetter) return;
+    await navigator.clipboard.writeText(coverLetter);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
+  }
+
+  async function exportCover(kind: "pdf" | "docx") {
+    if (!coverLetter) {
+      setError("Generate a cover letter first");
+      return;
+    }
+    setBusy(`cover-${kind}`);
+    setError(null);
+    try {
+      const res = await fetch("/api/cover-letter/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          letter: coverLetter,
+          kind,
+          authorName: resume.contact.fullName,
+          style,
+        }),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      const blob = await res.blob();
+      const base = resume.contact.fullName.replace(/\s+/g, "_") || "Candidate";
+      downloadBlob(blob, `${base}_Cover_Letter.${kind}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Cover letter export failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   function resetToOriginal() {
     setResume(structuredClone(sourceResume));
     setAppliedIntensity(null);
-    setHeadlineToggles(
-      sourceResume.headline
-        ? sourceResume.headline.split(/\s*\|\s*/).map((label) => ({ label, enabled: true }))
-        : [],
-    );
+    setCoverLetter("");
     setError(null);
     setViewMode("preview");
   }
@@ -332,7 +404,7 @@ export function Workspace({ userName, userEmail }: Props) {
       const res = await fetch(`/api/export/${kind}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resume }),
+        body: JSON.stringify({ resume, style }),
       });
       if (!res.ok) throw new Error(await readError(res));
       const blob = await res.blob();
@@ -360,16 +432,16 @@ export function Workspace({ userName, userEmail }: Props) {
           <div>
             <p className="text-lg font-semibold tracking-tight">Resume-Builder</p>
             <p className="text-xs text-stone-500">
-              {userName || userEmail || "user"} · live preview · intensity modes · live ATS
+              {userName || userEmail || "user"} · vibe editor · cover letter · live ATS
             </p>
           </div>
           <SignOutButton />
         </div>
-        {busy === "tailor" || progress > 0 ? (
+        {busy === "tailor" || busy === "cover" || progress > 0 ? (
           <div className="h-1.5 w-full bg-stone-200">
             <div
               className="h-full bg-teal-600 transition-all duration-300 ease-out"
-              style={{ width: `${busy === "tailor" ? Math.max(progress, 8) : progress}%` }}
+              style={{ width: `${Math.max(progress, busy ? 8 : 0)}%` }}
             />
           </div>
         ) : (
@@ -420,7 +492,7 @@ export function Workspace({ userName, userEmail }: Props) {
               value={jobDescription}
               onChange={(e) => setJobDescription(e.target.value)}
               placeholder="Paste the full job description…"
-              rows={9}
+              rows={8}
               className="mt-3 w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-teal-600"
             />
           </section>
@@ -472,34 +544,112 @@ export function Workspace({ userName, userEmail }: Props) {
             </div>
           </section>
 
-          {headlineToggles.length > 0 ? (
-            <section className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
-                Headline parts
-              </h2>
-              <p className="mt-1 text-xs text-stone-500">
-                Uncheck any part to remove it from the live headline.
-              </p>
-              <div className="mt-3 flex flex-col gap-2">
-                {headlineToggles.map((part, idx) => (
-                  <label key={`${part.label}-${idx}`} className="flex items-start gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      className="mt-1"
-                      checked={part.enabled}
-                      onChange={(e) => {
-                        const next = headlineToggles.map((p, i) =>
-                          i === idx ? { ...p, enabled: e.target.checked } : p,
-                        );
-                        applyHeadlineToggles(next);
-                      }}
-                    />
-                    <span>{part.label}</span>
-                  </label>
-                ))}
-              </div>
-            </section>
-          ) : null}
+          <section className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
+              Vibe editor
+            </h2>
+            <p className="mt-1 text-xs text-stone-500">
+              Live preview and PDF/DOCX exports use these settings.
+            </p>
+            <label className="mt-3 flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={style.showHeadline}
+                onChange={(e) =>
+                  setStyle((s) => ({ ...s, showHeadline: e.target.checked }))
+                }
+              />
+              Show headline under name
+            </label>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="text-sm">
+                <span className="mb-1 block text-xs font-semibold uppercase text-stone-500">
+                  Font
+                </span>
+                <select
+                  className="w-full rounded-md border border-stone-300 px-3 py-2"
+                  value={style.fontFamily}
+                  onChange={(e) =>
+                    setStyle((s) => ({
+                      ...s,
+                      fontFamily: e.target.value as ResumeStyle["fontFamily"],
+                    }))
+                  }
+                >
+                  <option value="helvetica">Helvetica / Arial (ATS-safe)</option>
+                  <option value="times">Times New Roman</option>
+                  <option value="courier">Courier</option>
+                </select>
+              </label>
+              <label className="text-sm">
+                <span className="mb-1 block text-xs font-semibold uppercase text-stone-500">
+                  Body size ({style.fontSize}pt)
+                </span>
+                <input
+                  type="range"
+                  min={8}
+                  max={12}
+                  step={0.5}
+                  value={style.fontSize}
+                  onChange={(e) =>
+                    setStyle((s) => ({ ...s, fontSize: Number(e.target.value) }))
+                  }
+                  className="mt-2 w-full"
+                />
+              </label>
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
+              Cover letter
+            </h2>
+            <p className="mt-1 text-xs text-stone-500">
+              Written from your tailored resume + JD. Truthful — no invented stack.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={!!busy}
+                onClick={generateCoverLetter}
+                className="rounded-md bg-teal-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {busy === "cover" ? "Writing…" : "Generate cover letter"}
+              </button>
+              <button
+                type="button"
+                disabled={!coverLetter}
+                onClick={copyCoverLetter}
+                className="rounded-md border border-stone-300 px-4 py-2 text-sm font-medium disabled:opacity-50"
+              >
+                {copied ? "Copied" : "Copy"}
+              </button>
+              <button
+                type="button"
+                disabled={!coverLetter || !!busy}
+                onClick={() => exportCover("pdf")}
+                className="rounded-md border border-stone-300 px-4 py-2 text-sm font-medium disabled:opacity-50"
+              >
+                PDF
+              </button>
+              <button
+                type="button"
+                disabled={!coverLetter || !!busy}
+                onClick={() => exportCover("docx")}
+                className="rounded-md border border-stone-300 px-4 py-2 text-sm font-medium disabled:opacity-50"
+              >
+                DOCX
+              </button>
+            </div>
+            {coverLetter ? (
+              <textarea
+                className="mt-3 w-full rounded-md border border-stone-300 px-3 py-2 text-sm leading-relaxed outline-none focus:border-teal-600"
+                rows={14}
+                value={coverLetter}
+                onChange={(e) => setCoverLetter(e.target.value)}
+              />
+            ) : null}
+          </section>
 
           {error ? (
             <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
@@ -516,11 +666,6 @@ export function Workspace({ userName, userEmail }: Props) {
                     <span className="ml-2 rounded bg-teal-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-teal-800">
                       live
                     </span>
-                    {appliedIntensity ? (
-                      <span className="ml-1 rounded bg-stone-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-stone-700">
-                        {appliedIntensity}
-                      </span>
-                    ) : null}
                   </h2>
                   <p className="mt-1 text-3xl font-semibold tracking-tight">
                     {score.matchRate}%
@@ -618,9 +763,10 @@ export function Workspace({ userName, userEmail }: Props) {
           {viewMode === "preview" ? (
             <ResumeCard
               resume={resume}
+              style={style}
               label={
                 appliedIntensity
-                  ? `Live preview · ${appliedIntensity} mode`
+                  ? `Live preview · ${appliedIntensity}`
                   : "Live preview · source"
               }
             />
@@ -628,14 +774,11 @@ export function Workspace({ userName, userEmail }: Props) {
 
           {viewMode === "compare" ? (
             <div className="grid gap-3">
-              <ResumeCard resume={sourceResume} label="Original" />
+              <ResumeCard resume={sourceResume} style={style} label="Original" />
               <ResumeCard
                 resume={resume}
-                label={
-                  appliedIntensity
-                    ? `Tailored · ${appliedIntensity}`
-                    : "Tailored (current)"
-                }
+                style={style}
+                label={appliedIntensity ? `Tailored · ${appliedIntensity}` : "Tailored"}
               />
             </div>
           ) : null}

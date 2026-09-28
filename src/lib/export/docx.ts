@@ -8,10 +8,12 @@ import {
   AlignmentType,
 } from "docx";
 import type { StructuredResume } from "@/lib/schema";
-
-const FONT = "Calibri";
-const BODY = 20; // 10pt
-const SMALL = 18; // 9pt
+import {
+  DEFAULT_RESUME_STYLE,
+  docxFontFamily,
+  halfPt,
+  type ResumeStyle,
+} from "@/lib/style";
 
 function hr() {
   return {
@@ -24,70 +26,72 @@ function hr() {
   };
 }
 
-function sectionTitle(text: string) {
-  return new Paragraph({
-    spacing: { before: 200, after: 80 },
-    border: hr(),
-    children: [
-      new TextRun({
-        text: text.toUpperCase(),
-        bold: true,
-        size: 21,
-        font: FONT,
-        color: "111111",
-      }),
-    ],
-  });
-}
+export async function buildDocxBuffer(
+  resume: StructuredResume,
+  style: ResumeStyle = DEFAULT_RESUME_STYLE,
+): Promise<Buffer> {
+  const FONT = docxFontFamily(style);
+  const BODY = halfPt(style.fontSize);
+  const SMALL = halfPt(Math.max(8, style.fontSize - 1));
+  const NAME = halfPt(style.fontSize + 8);
+  const SECTION = halfPt(style.fontSize + 0.5);
 
-function body(text: string, opts?: { bold?: boolean; before?: number; size?: number }) {
-  return new Paragraph({
-    spacing: { before: opts?.before ?? 0, after: 48, line: 276 },
-    children: [
-      new TextRun({
-        text,
-        bold: opts?.bold,
-        size: opts?.size ?? BODY,
-        font: FONT,
-        color: "111111",
-      }),
-    ],
-  });
-}
+  const sectionTitle = (text: string) =>
+    new Paragraph({
+      spacing: { before: 200, after: 80 },
+      border: hr(),
+      children: [
+        new TextRun({
+          text: text.toUpperCase(),
+          bold: true,
+          size: SECTION,
+          font: FONT,
+          color: "111111",
+        }),
+      ],
+    });
 
-function bullet(text: string) {
-  return new Paragraph({
-    spacing: { before: 0, after: 28, line: 276 },
-    indent: { left: 180 },
-    children: [
-      new TextRun({
-        text: `• ${text}`,
-        size: BODY,
-        font: FONT,
-        color: "111111",
-      }),
-    ],
-  });
-}
+  const body = (text: string, opts?: { bold?: boolean; before?: number; size?: number }) =>
+    new Paragraph({
+      spacing: { before: opts?.before ?? 0, after: 48, line: 276 },
+      children: [
+        new TextRun({
+          text,
+          bold: opts?.bold,
+          size: opts?.size ?? BODY,
+          font: FONT,
+          color: "111111",
+        }),
+      ],
+    });
 
-function contactParagraph(resume: StructuredResume) {
-  const children: (TextRun | ExternalHyperlink)[] = [];
+  const bullet = (text: string) =>
+    new Paragraph({
+      spacing: { before: 0, after: 28, line: 276 },
+      indent: { left: 180 },
+      children: [
+        new TextRun({
+          text: `• ${text}`,
+          size: BODY,
+          font: FONT,
+          color: "111111",
+        }),
+      ],
+    });
+
+  const contactChildren: (TextRun | ExternalHyperlink)[] = [];
   const parts: string[] = [];
+  if (resume.contact.location) parts.push(resume.contact.location);
   if (resume.contact.email) parts.push(resume.contact.email);
   if (resume.contact.phone) parts.push(resume.contact.phone);
-  if (resume.contact.location) parts.push(resume.contact.location);
-
   if (parts.length) {
-    children.push(
-      new TextRun({ text: parts.join("  ·  "), size: SMALL, font: FONT }),
-    );
+    contactChildren.push(new TextRun({ text: parts.join("  ·  "), size: SMALL, font: FONT }));
   }
-
   resume.contact.links.forEach((link, i) => {
-    if (children.length || i > 0) {
-      children.push(new TextRun({ text: "  ·  ", size: SMALL, font: FONT }));
+    if (contactChildren.length || i > 0) {
+      contactChildren.push(new TextRun({ text: "  ·  ", size: SMALL, font: FONT }));
     }
-    children.push(
+    contactChildren.push(
       new ExternalHyperlink({
         children: [
           new TextRun({
@@ -104,14 +108,6 @@ function contactParagraph(resume: StructuredResume) {
     );
   });
 
-  return new Paragraph({
-    alignment: AlignmentType.CENTER,
-    spacing: { after: 120 },
-    children,
-  });
-}
-
-export async function buildDocxBuffer(resume: StructuredResume): Promise<Buffer> {
   const children: Paragraph[] = [];
 
   children.push(
@@ -122,7 +118,7 @@ export async function buildDocxBuffer(resume: StructuredResume): Promise<Buffer>
         new TextRun({
           text: resume.contact.fullName.toUpperCase(),
           bold: true,
-          size: 36,
+          size: NAME,
           font: FONT,
           color: "111111",
         }),
@@ -130,7 +126,7 @@ export async function buildDocxBuffer(resume: StructuredResume): Promise<Buffer>
     }),
   );
 
-  if (resume.headline) {
+  if (style.showHeadline && resume.headline?.trim()) {
     children.push(
       new Paragraph({
         alignment: AlignmentType.CENTER,
@@ -139,7 +135,7 @@ export async function buildDocxBuffer(resume: StructuredResume): Promise<Buffer>
           new TextRun({
             text: resume.headline,
             bold: true,
-            size: 21,
+            size: BODY + 1,
             font: FONT,
             color: "222222",
           }),
@@ -148,7 +144,13 @@ export async function buildDocxBuffer(resume: StructuredResume): Promise<Buffer>
     );
   }
 
-  children.push(contactParagraph(resume));
+  children.push(
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 120 },
+      children: contactChildren,
+    }),
+  );
 
   if (resume.summary) {
     children.push(sectionTitle("Professional Summary"));
@@ -156,7 +158,7 @@ export async function buildDocxBuffer(resume: StructuredResume): Promise<Buffer>
   }
 
   if (resume.skills.length) {
-    children.push(sectionTitle("Technical Skills"));
+    children.push(sectionTitle("Skills"));
     for (const group of resume.skills) {
       children.push(
         new Paragraph({
@@ -187,9 +189,7 @@ export async function buildDocxBuffer(resume: StructuredResume): Promise<Buffer>
   if (resume.experience.length) {
     children.push(sectionTitle("Professional Experience"));
     for (const job of resume.experience) {
-      children.push(
-        body(`${job.company} — ${job.title}`, { bold: true, before: 100 }),
-      );
+      children.push(body(`${job.company} — ${job.title}`, { bold: true, before: 100 }));
       children.push(
         body(
           `${job.start} – ${job.end}${job.location ? `  ·  ${job.location}` : ""}`,
@@ -204,12 +204,7 @@ export async function buildDocxBuffer(resume: StructuredResume): Promise<Buffer>
     children.push(sectionTitle("Projects"));
     for (const project of resume.projects) {
       const runs: (TextRun | ExternalHyperlink)[] = [
-        new TextRun({
-          text: project.name,
-          bold: true,
-          size: BODY,
-          font: FONT,
-        }),
+        new TextRun({ text: project.name, bold: true, size: BODY, font: FONT }),
       ];
       if (project.url) {
         runs.push(new TextRun({ text: "  ·  ", size: BODY, font: FONT }));
@@ -229,12 +224,7 @@ export async function buildDocxBuffer(resume: StructuredResume): Promise<Buffer>
           }),
         );
       }
-      children.push(
-        new Paragraph({
-          spacing: { before: 80, after: 28 },
-          children: runs,
-        }),
-      );
+      children.push(new Paragraph({ spacing: { before: 80, after: 28 }, children: runs }));
       for (const b of project.bullets) children.push(bullet(b));
     }
   }
@@ -260,12 +250,44 @@ export async function buildDocxBuffer(resume: StructuredResume): Promise<Buffer>
       {
         properties: {
           page: {
-            margin: {
-              top: 720,
-              bottom: 720,
-              left: 864,
-              right: 864,
-            },
+            margin: { top: 720, bottom: 720, left: 864, right: 864 },
+          },
+        },
+        children,
+      },
+    ],
+  });
+
+  return Buffer.from(await Packer.toBuffer(doc));
+}
+
+export async function buildCoverLetterDocxBuffer(
+  letter: string,
+  style: ResumeStyle = DEFAULT_RESUME_STYLE,
+): Promise<Buffer> {
+  const FONT = docxFontFamily(style);
+  const BODY = halfPt(style.fontSize);
+  const children = letter.split(/\n\n+/).map(
+    (block) =>
+      new Paragraph({
+        spacing: { after: 160, line: 300 },
+        children: [
+          new TextRun({
+            text: block,
+            size: BODY,
+            font: FONT,
+            color: "111111",
+          }),
+        ],
+      }),
+  );
+
+  const doc = new Document({
+    sections: [
+      {
+        properties: {
+          page: {
+            margin: { top: 864, bottom: 864, left: 1008, right: 1008 },
           },
         },
         children,
