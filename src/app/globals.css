@@ -7,6 +7,21 @@ body {
   color: var(--text);
 }
 
+/* Avoid horizontal rubber-band scroll on mobile app shell */
+html {
+  overflow-x: hidden;
+}
+
 ::selection {
   background: color-mix(in srgb, var(--alfred-amber) 35%, transparent);
 }
+
+/* Safe areas for notched phones (sticky bars / CTAs) */
+.pb-safe {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+

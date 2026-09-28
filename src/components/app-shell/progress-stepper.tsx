@@ -19,11 +19,14 @@ type Props = {
 
 /**
  * Gated progress: completed / current / future.
- * Future steps are not clickable until unlocked by real workflow progress.
+ * Mobile: equal-width columns with number + short label, large tap targets.
  */
 export function ProgressStepper({ current, unlockedThrough, onNavigate }: Props) {
   return (
-    <nav aria-label="Application progress" className="flex min-w-0 flex-1 items-center justify-center gap-0 px-2">
+    <nav
+      aria-label="Application progress"
+      className="flex w-full min-w-0 items-stretch justify-between gap-0.5 sm:justify-center sm:gap-0 sm:px-2"
+    >
       {WORKFLOW_STEPS.map((step, index) => {
         const completed = step.id < current && step.id <= unlockedThrough;
         const active = step.id === current;
@@ -31,11 +34,11 @@ export function ProgressStepper({ current, unlockedThrough, onNavigate }: Props)
         const clickable = !locked;
 
         return (
-          <div key={step.id} className="flex min-w-0 items-center">
+          <div key={step.id} className="flex min-w-0 flex-1 items-center sm:flex-none">
             {index > 0 ? (
               <div
                 aria-hidden
-                className={`mx-1 hidden h-px w-6 sm:mx-2 sm:block sm:w-8 md:w-10 ${
+                className={`mx-0.5 hidden h-px w-4 shrink-0 sm:mx-1.5 sm:block sm:w-6 md:mx-2 md:w-8 ${
                   step.id <= unlockedThrough
                     ? "bg-[var(--alfred-amber)]/50"
                     : "bg-[var(--border)]"
@@ -46,21 +49,24 @@ export function ProgressStepper({ current, unlockedThrough, onNavigate }: Props)
               type="button"
               disabled={locked}
               aria-current={active ? "step" : undefined}
+              aria-label={`${step.label}${locked ? " (locked)" : active ? " (current)" : ""}`}
               onClick={() => clickable && onNavigate(step.id)}
-              className={`shrink-0 rounded-md px-1.5 py-1 text-left text-[11px] transition sm:px-2 sm:text-xs ${
+              className={`flex min-h-11 w-full flex-col items-center justify-center rounded-lg px-0.5 py-1.5 text-center transition active:scale-[0.98] sm:min-h-0 sm:w-auto sm:flex-row sm:items-baseline sm:rounded-md sm:px-2 sm:py-1 sm:text-left ${
                 active
-                  ? "font-semibold text-[var(--alfred-amber)]"
+                  ? "bg-[var(--alfred-amber)]/10 font-semibold text-[var(--alfred-amber)] sm:bg-transparent"
                   : completed
-                    ? "text-[var(--text-secondary)] hover:text-[var(--text)]"
+                    ? "text-[var(--text-secondary)]"
                     : locked
-                      ? "cursor-not-allowed text-[var(--text-muted)] opacity-50"
-                      : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                      ? "cursor-not-allowed text-[var(--text-muted)] opacity-45"
+                      : "text-[var(--text-muted)]"
               }`}
             >
-              <span className="font-mono tabular-nums">
+              <span className="font-mono text-[10px] tabular-nums sm:text-[11px] md:text-xs">
                 {String(step.id).padStart(2, "0")}
               </span>
-              <span className="ml-1 hidden sm:inline">{step.short}</span>
+              <span className="mt-0.5 max-w-full truncate text-[10px] leading-tight sm:ml-1 sm:mt-0 sm:text-xs">
+                {step.short}
+              </span>
             </button>
           </div>
         );

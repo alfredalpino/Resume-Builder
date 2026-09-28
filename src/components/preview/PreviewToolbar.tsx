@@ -4,6 +4,13 @@ export type PreviewZoom = "fit" | 0.75 | 1 | 1.25;
 
 type ViewMode = "original" | "tailored" | "compare" | "edit";
 
+const VIEW_LABELS: Record<ViewMode, string> = {
+  original: "Original",
+  tailored: "Tailored",
+  compare: "Compare",
+  edit: "Edit",
+};
+
 export function PreviewToolbar({
   viewMode,
   onViewMode,
@@ -16,29 +23,32 @@ export function PreviewToolbar({
   onZoom: (z: PreviewZoom) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] px-4 py-3">
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
-        Resume preview
-      </h2>
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex rounded-lg border border-[var(--border)] bg-[var(--surface)] p-0.5">
+    <div className="sticky top-0 z-10 space-y-2 border-b border-[var(--border)] bg-[var(--elevated)]/95 px-3 py-2.5 backdrop-blur sm:px-4 sm:py-3">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+          Resume preview
+        </h2>
+        <p className="text-[10px] text-[var(--text-muted)] lg:hidden">A4 · pinch scroll</p>
+      </div>
+      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex shrink-0 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-0.5">
           {(["original", "tailored", "compare", "edit"] as ViewMode[]).map((m) => (
             <button
               key={m}
               type="button"
               onClick={() => onViewMode(m)}
-              className={`rounded-md px-2 py-1 text-[11px] capitalize transition-colors duration-150 ${
+              className={`min-h-9 rounded-md px-2.5 text-xs capitalize transition-colors duration-150 sm:text-[11px] ${
                 viewMode === m
-                  ? "bg-[var(--elevated)] text-[var(--text)]"
+                  ? "bg-[var(--elevated)] font-medium text-[var(--text)]"
                   : "text-[var(--text-muted)]"
               }`}
             >
-              {m}
+              {VIEW_LABELS[m]}
             </button>
           ))}
         </div>
         {viewMode !== "edit" ? (
-          <div className="flex rounded-lg border border-[var(--border)] bg-[var(--surface)] p-0.5">
+          <div className="flex shrink-0 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-0.5">
             {(
               [
                 ["fit", "Fit"],
@@ -51,9 +61,9 @@ export function PreviewToolbar({
                 key={String(z)}
                 type="button"
                 onClick={() => onZoom(z)}
-                className={`rounded-md px-2 py-1 text-[11px] transition-colors duration-150 ${
+                className={`min-h-9 rounded-md px-2.5 text-xs transition-colors duration-150 sm:text-[11px] ${
                   zoom === z
-                    ? "bg-[var(--elevated)] text-[var(--text)]"
+                    ? "bg-[var(--elevated)] font-medium text-[var(--text)]"
                     : "text-[var(--text-muted)]"
                 }`}
               >

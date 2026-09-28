@@ -15,9 +15,13 @@ import {
   Check,
   ChevronDown,
   Download,
+  Eye,
   FileText,
+  Menu,
+  PenLine,
   RefreshCw,
   Upload,
+  X,
 } from "lucide-react";
 import type { AtsScore, StructuredResume } from "@/lib/schema";
 import { emptyResume } from "@/lib/schema";
@@ -94,6 +98,7 @@ export function Workspace({ userName, userEmail }: Props) {
   const [fitScale, setFitScale] = useState(0.55);
   const [draftStatus, setDraftStatus] = useState<string | null>(null);
   const [processStep, setProcessStep] = useState<string | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const scoreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const previewPaneRef = useRef<HTMLDivElement | null>(null);
@@ -500,26 +505,28 @@ export function Workspace({ userName, userEmail }: Props) {
             : null;
 
   return (
-    <div className="flex min-h-screen flex-col bg-[var(--bg)] text-[var(--text)]">
-      <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur">
-        <div className="mx-auto flex max-w-[1440px] items-center gap-3 px-4 py-3 lg:px-8">
-          <div className="min-w-[140px] shrink-0">
-            <p className="flex items-center gap-2 text-sm font-semibold tracking-tight">
+    <div className="flex min-h-[100dvh] flex-col bg-[var(--bg)] text-[var(--text)]">
+      <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--surface)]/95 pt-safe backdrop-blur">
+        <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-2 px-3 py-2.5 sm:px-4 lg:px-8 lg:py-3">
+          <div className="min-w-0 shrink">
+            <p className="flex items-center gap-1.5 text-sm font-semibold tracking-tight">
               <span className="font-mono text-[var(--alfred-amber)]">&gt;_</span>
-              Alfred Terminal
+              <span className="truncate">Alfred Terminal</span>
             </p>
             <p className="hidden text-[10px] text-[var(--text-muted)] sm:block">
               Your career, intelligently optimized.
             </p>
           </div>
 
-          <ProgressStepper
-            current={step}
-            unlockedThrough={unlockedThrough}
-            onNavigate={go}
-          />
+          <div className="hidden min-w-0 flex-1 lg:block">
+            <ProgressStepper
+              current={step}
+              unlockedThrough={unlockedThrough}
+              onNavigate={go}
+            />
+          </div>
 
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             {draftStatus ? (
               <span className="hidden text-[10px] text-[var(--text-muted)] md:inline">
                 {draftStatus}
@@ -538,8 +545,48 @@ export function Workspace({ userName, userEmail }: Props) {
               </span>
               <SignOutButton />
             </div>
+            <button
+              type="button"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-secondary)] sm:hidden"
+              aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+              aria-expanded={mobileMenuOpen}
+              onClick={() => setMobileMenuOpen((o) => !o)}
+            >
+              {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+            </button>
           </div>
         </div>
+
+        {/* Mobile progress — own row so it never fights the brand/actions */}
+        <div className="border-t border-[var(--border)] px-2 py-1.5 lg:hidden">
+          <ProgressStepper
+            current={step}
+            unlockedThrough={unlockedThrough}
+            onNavigate={(s) => {
+              go(s);
+              setMobileTab("workspace");
+            }}
+          />
+        </div>
+
+        {mobileMenuOpen ? (
+          <div className="space-y-1 border-t border-[var(--border)] px-3 py-3 sm:hidden">
+            <p className="truncate px-2 text-xs text-[var(--text-muted)]">
+              {userName || userEmail || "Signed in"}
+            </p>
+            <Link
+              href="/coffee"
+              className="block rounded-lg px-3 py-2.5 text-sm text-[var(--text-secondary)] hover:bg-[var(--elevated)]"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Buy me a coffee
+            </Link>
+            <div className="px-2 pt-1">
+              <SignOutButton />
+            </div>
+          </div>
+        ) : null}
+
         {(busy || progress > 0) && (
           <div className="h-0.5 w-full bg-[var(--elevated)]">
             <div
@@ -549,35 +596,42 @@ export function Workspace({ userName, userEmail }: Props) {
           </div>
         )}
         {processLabel ? (
-          <div className="space-y-0.5 px-4 py-1.5 lg:px-8">
+          <div className="space-y-0.5 px-3 py-1.5 sm:px-4 lg:px-8">
             <p className="font-mono text-[11px] text-[var(--alfred-amber)]">{processLabel}</p>
             {processStep ? (
               <p className="font-mono text-[10px] text-[var(--text-muted)]">→ {processStep}</p>
             ) : null}
           </div>
         ) : null}
-      </header>
 
-      <div className="flex border-b border-[var(--border)] lg:hidden">
-        {(["workspace", "preview"] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setMobileTab(t)}
-            className={`flex-1 py-2.5 text-sm capitalize ${
-              mobileTab === t
-                ? "border-b-2 border-[var(--alfred-amber)] text-[var(--alfred-amber)]"
-                : "text-[var(--text-muted)]"
-            }`}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+        {/* Mobile Workspace / Preview — part of sticky header */}
+        <div className="flex border-t border-[var(--border)] lg:hidden">
+          {(
+            [
+              { id: "workspace" as const, label: "Workspace", icon: PenLine },
+              { id: "preview" as const, label: "Preview", icon: Eye },
+            ] as const
+          ).map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setMobileTab(t.id)}
+              className={`flex flex-1 items-center justify-center gap-2 py-2.5 text-sm font-medium ${
+                mobileTab === t.id
+                  ? "border-b-2 border-[var(--alfred-amber)] text-[var(--alfred-amber)]"
+                  : "text-[var(--text-muted)]"
+              }`}
+            >
+              <t.icon className="h-4 w-4" />
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </header>
 
       <main className="mx-auto grid w-full max-w-[1440px] flex-1 gap-0 lg:grid-cols-[minmax(0,1.1fr)_minmax(380px,0.9fr)]">
         <div
-          className={`min-w-0 space-y-8 overflow-y-auto px-4 py-6 lg:max-h-[calc(100vh-57px)] lg:px-8 lg:py-8 ${
+          className={`min-w-0 space-y-6 overflow-y-auto px-3 py-5 pb-28 sm:space-y-8 sm:px-4 sm:py-6 lg:max-h-[calc(100vh-57px)] lg:px-8 lg:py-8 lg:pb-8 ${
             mobileTab === "preview" ? "hidden lg:block" : ""
           }`}
         >
@@ -599,10 +653,13 @@ export function Workspace({ userName, userEmail }: Props) {
               <p className="mt-1 text-sm text-[var(--text-secondary)]">
                 Start with your current resume.
               </p>
-              <label className="mt-5 flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface)] px-6 py-12 text-center transition hover:border-[var(--alfred-amber)]/40">
+              <label className="mt-5 flex min-h-[160px] cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface)] px-4 py-10 text-center transition active:border-[var(--alfred-amber)]/50 hover:border-[var(--alfred-amber)]/40 sm:px-6 sm:py-12">
                 <Upload className="h-8 w-8 text-[var(--text-muted)]" />
-                <span className="mt-3 text-sm font-medium">Drop PDF, DOCX, TXT, or Markdown</span>
-                <span className="mt-1 text-xs text-[var(--text-muted)]">or browse files · max 5 MB</span>
+                <span className="mt-3 text-sm font-medium">
+                  <span className="sm:hidden">Tap to upload PDF, DOCX, or TXT</span>
+                  <span className="hidden sm:inline">Drop PDF, DOCX, TXT, or Markdown</span>
+                </span>
+                <span className="mt-1 text-xs text-[var(--text-muted)]">Browse files · max 5 MB</span>
                 <input
                   type="file"
                   accept=".pdf,.docx,.txt,.md,.markdown,application/pdf,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -676,8 +733,8 @@ export function Workspace({ userName, userEmail }: Props) {
               <textarea
                 value={jobDescription}
                 onChange={(e) => setJobDescription(e.target.value)}
-                rows={12}
-                className="mt-4 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm leading-relaxed outline-none focus:border-[var(--alfred-amber)]"
+                rows={10}
+                className="mt-4 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-3 text-base leading-relaxed outline-none focus:border-[var(--alfred-amber)] sm:px-4 sm:text-sm"
                 placeholder="Paste the full job description…"
               />
               <div className="mt-2 flex items-center justify-between text-xs text-[var(--text-muted)]">
@@ -693,7 +750,7 @@ export function Workspace({ userName, userEmail }: Props) {
                   type="button"
                   disabled={!!busy}
                   onClick={runAnalysis}
-                  className="mt-5 h-11 rounded-lg bg-[var(--alfred-amber)] px-6 text-sm font-semibold text-[var(--bg)] disabled:opacity-50"
+                  className="mt-5 h-12 w-full rounded-lg bg-[var(--alfred-amber)] px-6 text-sm font-semibold text-[var(--bg)] disabled:opacity-50 sm:h-11 sm:w-auto"
                 >
                   {busy === "analyze" ? "Analyzing…" : "Analyze application"}
                 </button>
@@ -728,7 +785,7 @@ export function Workspace({ userName, userEmail }: Props) {
                       key={mode}
                       type="button"
                       onClick={() => setIntensity(mode)}
-                      className={`rounded-xl border px-4 py-4 text-left transition duration-150 ${
+                      className={`min-h-[88px] rounded-xl border px-4 py-4 text-left transition duration-150 ${
                         active
                           ? "border-[var(--alfred-amber)] bg-[var(--alfred-amber)]/10"
                           : "border-[var(--border)] bg-[var(--surface)] hover:border-[var(--border-hover)]"
@@ -805,12 +862,12 @@ export function Workspace({ userName, userEmail }: Props) {
                 </div>
               </div>
 
-              <div className="mt-5 flex flex-wrap gap-2">
+              <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                 <button
                   type="button"
                   disabled={!!busy}
                   onClick={() => tailor(intensity)}
-                  className="h-11 rounded-lg bg-[var(--alfred-amber)] px-6 text-sm font-semibold text-[var(--bg)] disabled:opacity-50"
+                  className="h-12 w-full rounded-lg bg-[var(--alfred-amber)] px-6 text-sm font-semibold text-[var(--bg)] disabled:opacity-50 sm:h-11 sm:w-auto"
                 >
                   {busy === "tailor"
                     ? "Tailoring…"
@@ -821,7 +878,7 @@ export function Workspace({ userName, userEmail }: Props) {
                     type="button"
                     disabled={!!busy}
                     onClick={resetToOriginal}
-                    className="h-11 rounded-lg border border-[var(--border)] px-4 text-sm disabled:opacity-50"
+                    className="h-12 w-full rounded-lg border border-[var(--border)] px-4 text-sm disabled:opacity-50 sm:h-11 sm:w-auto"
                   >
                     Reset to original
                   </button>
@@ -847,12 +904,12 @@ export function Workspace({ userName, userEmail }: Props) {
                   </span>
                   <span className="text-[var(--success)]">ATS-friendly structure ✓ Ready</span>
                 </div>
-                <div className="mt-5 flex flex-wrap gap-2">
+                <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                   <button
                     type="button"
                     disabled={!!busy}
                     onClick={() => exportFile("pdf")}
-                    className="inline-flex h-11 items-center gap-2 rounded-lg bg-[var(--alfred-amber)] px-5 text-sm font-semibold text-[var(--bg)] disabled:opacity-50"
+                    className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[var(--alfred-amber)] px-5 text-sm font-semibold text-[var(--bg)] disabled:opacity-50 sm:h-11 sm:w-auto"
                   >
                     <Download className="h-4 w-4" />
                     {busy === "pdf" ? "Building…" : "Download PDF"}
@@ -861,7 +918,7 @@ export function Workspace({ userName, userEmail }: Props) {
                     type="button"
                     disabled={!!busy}
                     onClick={() => exportFile("docx")}
-                    className="inline-flex h-11 items-center gap-2 rounded-lg border border-[var(--border)] px-5 text-sm disabled:opacity-50"
+                    className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-[var(--border)] px-5 text-sm disabled:opacity-50 sm:h-11 sm:w-auto"
                   >
                     {busy === "docx" ? "Building…" : "Download DOCX"}
                   </button>
@@ -869,7 +926,7 @@ export function Workspace({ userName, userEmail }: Props) {
                     type="button"
                     disabled={!!busy}
                     onClick={() => tailor(intensity)}
-                    className="inline-flex h-11 items-center gap-2 rounded-lg border border-[var(--border)] px-4 text-sm disabled:opacity-50"
+                    className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-[var(--border)] px-4 text-sm disabled:opacity-50 sm:h-11 sm:w-auto"
                   >
                     <RefreshCw className="h-3.5 w-3.5" />
                     Regenerate
@@ -877,7 +934,7 @@ export function Workspace({ userName, userEmail }: Props) {
                   <button
                     type="button"
                     onClick={() => setStep(4)}
-                    className="h-11 rounded-lg border border-[var(--border)] px-4 text-sm"
+                    className="h-12 w-full rounded-lg border border-[var(--border)] px-4 text-sm sm:h-11 sm:w-auto"
                   >
                     Change mode
                   </button>
@@ -899,7 +956,7 @@ export function Workspace({ userName, userEmail }: Props) {
                       type="button"
                       disabled={!!busy}
                       onClick={generateCoverLetter}
-                      className="mt-5 h-11 rounded-lg bg-[var(--alfred-amber)] px-5 text-sm font-semibold text-[var(--bg)] disabled:opacity-50"
+                      className="mt-5 h-12 w-full rounded-lg bg-[var(--alfred-amber)] px-5 text-sm font-semibold text-[var(--bg)] disabled:opacity-50 sm:h-11 sm:w-auto"
                     >
                       {busy === "cover" ? "Writing…" : "Generate Cover Letter"}
                     </button>
@@ -951,8 +1008,8 @@ export function Workspace({ userName, userEmail }: Props) {
 
         {/* Preview column */}
         <aside
-          className={`border-[var(--border)] bg-[var(--elevated)]/40 lg:sticky lg:top-[57px] lg:h-[calc(100vh-57px)] lg:overflow-y-auto lg:border-l ${
-            mobileTab === "workspace" ? "hidden lg:block" : ""
+          className={`flex min-h-0 flex-col border-[var(--border)] bg-[var(--elevated)]/40 lg:sticky lg:top-[57px] lg:h-[calc(100vh-57px)] lg:overflow-hidden lg:border-l ${
+            mobileTab === "workspace" ? "hidden lg:flex" : "flex min-h-[calc(100dvh-12rem)]"
           }`}
         >
           <PreviewToolbar
@@ -961,7 +1018,10 @@ export function Workspace({ userName, userEmail }: Props) {
             zoom={zoom}
             onZoom={setZoom}
           />
-          <div ref={previewPaneRef} className="overflow-x-auto p-4">
+          <div
+            ref={previewPaneRef}
+            className="flex-1 overflow-x-auto overflow-y-auto p-3 pb-safe sm:p-4"
+          >
             {!hasSource ? (
               <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-[var(--border)] text-sm text-[var(--text-muted)]">
                 Upload a resume to preview
@@ -1010,22 +1070,34 @@ export function Workspace({ userName, userEmail }: Props) {
         </aside>
       </main>
 
-      {hasSource && hasJd && unlockedThrough >= 4 && step === 4 ? (
-        <div className="sticky bottom-0 z-20 border-t border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur">
-          <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-3 px-4 py-3 lg:px-8">
-            <p className="text-xs text-[var(--text-muted)]">
+      {hasSource && hasJd && unlockedThrough >= 4 && step === 4 && mobileTab === "workspace" ? (
+        <div className="sticky bottom-0 z-20 border-t border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur lg:block">
+          <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-3 px-3 py-3 pb-safe sm:px-4 lg:px-8">
+            <p className="hidden text-xs text-[var(--text-muted)] sm:block">
               {TAILOR_INTENSITY_META[intensity].label} · Ready
             </p>
             <button
               type="button"
               disabled={!!busy}
               onClick={() => tailor(intensity)}
-              className="h-10 rounded-lg bg-[var(--alfred-amber)] px-5 text-sm font-semibold text-[var(--bg)] disabled:opacity-50"
+              className="h-12 w-full rounded-lg bg-[var(--alfred-amber)] px-5 text-sm font-semibold text-[var(--bg)] disabled:opacity-50 sm:h-10 sm:w-auto"
             >
               Tailor Resume →
             </button>
           </div>
         </div>
+      ) : null}
+
+      {/* Mobile floating jump to preview when resume exists */}
+      {hasSource && mobileTab === "workspace" && !(step === 4 && unlockedThrough >= 4) ? (
+        <button
+          type="button"
+          onClick={() => setMobileTab("preview")}
+          className="fixed bottom-5 right-3 z-30 inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2.5 text-xs font-medium text-[var(--text)] shadow-[var(--shadow)] pb-safe lg:hidden"
+        >
+          <Eye className="h-3.5 w-3.5 text-[var(--alfred-amber)]" />
+          Preview
+        </button>
       ) : null}
     </div>
   );

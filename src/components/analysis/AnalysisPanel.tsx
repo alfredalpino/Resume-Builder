@@ -223,7 +223,7 @@ export function AnalysisPanel({
         <button
           type="button"
           onClick={onContinue}
-          className="mt-5 h-11 rounded-lg bg-[var(--alfred-amber)] px-6 text-sm font-semibold text-[var(--bg)] transition-opacity hover:opacity-90"
+          className="mt-5 h-12 w-full rounded-lg bg-[var(--alfred-amber)] px-6 text-sm font-semibold text-[var(--bg)] transition-opacity hover:opacity-90 sm:h-11 sm:w-auto"
         >
           Continue to tailor
         </button>
