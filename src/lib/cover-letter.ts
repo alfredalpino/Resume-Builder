@@ -1,93 +1,152 @@
-import { analyzeJobDescription, pickBestTitle, type JdAnalysis } from "@/lib/nlp";
-import type { TailorIntensity } from "@/lib/center";
+import { analyzeJobDescription, detectResumeDomain, pickBestTitle, type JdAnalysis } from "@/lib/nlp";
+import { pivotDistance, type TailorIntensity } from "@/lib/center";
 import type { StructuredResume } from "@/lib/schema";
+import { titleCasePhrase, capitalizeSentence } from "@/lib/resume/polish";
+import { buildOptimizationPlan } from "@/lib/resume/optimizer-plan";
+import { resumeToPlainText } from "@/lib/schema";
+import { writeCoverLetterWithClaude } from "@/lib/resume/writer-claude";
+import { getEntitlements } from "@/lib/billing/entitlements";
 
-/**
- * Truthful cover letter — mirrors JD themes using only evidenced resume facts.
- * Never invents employers, degrees, or unearned tech.
- */
-export function buildCoverLetter(
+export type CoverLetterStrategy = {
+  primaryStrength: string;
+  secondaryStrength: string;
+  mostRelevantExperience: string;
+  tone: "professional" | "pivot_honest" | "same_domain";
+  company: string;
+  role: string;
+};
+
+export function buildCoverLetterStrategy(
+  resume: StructuredResume,
+  jobDescription: string,
+  intensity: TailorIntensity,
+  analysis?: JdAnalysis,
+): CoverLetterStrategy {
+  const analyzed = analysis ?? analyzeJobDescription(jobDescription);
+  const recent = resume.experience[0];
+  const skills = resume.skills.flatMap((g) => g.items).slice(0, 6);
+  return {
+    primaryStrength: skills[0] || "clarifying requirements and delivering under pressure",
+    secondaryStrength: skills[1] || "cross-functional collaboration",
+    mostRelevantExperience: recent
+      ? `${recent.title} at ${recent.company}`
+      : "prior professional experience",
+    tone:
+      intensity === "hard"
+        ? "pivot_honest"
+        : intensity === "subtle"
+          ? "same_domain"
+          : "professional",
+    company: analyzed.companyHints[0] || "the hiring team",
+    role: titleCasePhrase(pickBestTitle(analyzed.titleHints, analyzed.domain)),
+  };
+}
+
+export async function buildCoverLetter(
   resume: StructuredResume,
   jobDescription: string,
   intensity: TailorIntensity = "medium",
   analysis?: JdAnalysis,
-): { letter: string; thinking: string[] } {
+  userEmail?: string | null,
+): Promise<{ letter: string; thinking: string[]; strategy: CoverLetterStrategy }> {
   const analyzed = analysis ?? analyzeJobDescription(jobDescription);
-  const thinking: string[] = [];
-  const name = resume.contact.fullName || "Candidate";
-  const company = analyzed.companyHints[0] || "the hiring team";
-  const role = pickBestTitle(analyzed.titleHints, analyzed.domain);
+  const strategy = buildCoverLetterStrategy(resume, jobDescription, intensity, analyzed);
+  const thinking: string[] = [
+    `Cover letter targeted at ${strategy.role} @ ${strategy.company}.`,
+    `Tone: ${strategy.tone}.`,
+  ];
 
-  const tools = analyzed.tools.filter((t) =>
-    new RegExp(`\\b${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(
-      [
-        resume.summary,
-        resume.headline,
-        ...resume.skills.flatMap((g) => g.items),
-        ...resume.experience.flatMap((j) => j.bullets),
-        ...resume.projects.flatMap((p) => p.bullets),
-      ].join(" "),
+  const entitlements = getEntitlements(userEmail);
+  const sourceText = resumeToPlainText(resume);
+  const resumeDomain = detectResumeDomain(sourceText);
+  const distance = pivotDistance(resumeDomain, analyzed.domain);
+  const plan = buildOptimizationPlan({
+    resume,
+    analysis: analyzed,
+    distance,
+    intensity,
+    themes: [],
+    evidenced: analyzed.tools.filter((t) =>
+      new RegExp(`\\b${t.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\b`, "i").test(sourceText),
     ),
-  );
+    missing: [],
+    resumeDomain,
+  });
 
-  const recent = resume.experience[0];
-  const transferables = resume.skills
-    .filter((g) => /transferable|core|strength/i.test(g.category))
-    .flatMap((g) => g.items)
-    .slice(0, 4);
-  const themes = analyzed.keywords
-    .filter((k) => analyzed.tools.some((t) => t.toLowerCase() === k.toLowerCase()) || /ownership|user-facing|ship|agent|ui/i.test(k))
-    .slice(0, 5);
+  if (entitlements.claudeWriter) {
+    const claude = await writeCoverLetterWithClaude(
+      resume,
+      plan,
+      jobDescription,
+      strategy as unknown as Record<string, string>,
+    );
+    if (claude) {
+      thinking.push("Writer: Claude (Pro).");
+      return { letter: claude, thinking, strategy };
+    }
+    thinking.push("Claude cover unavailable — deterministic strategy letter.");
+  }
 
-  thinking.push(`Cover letter targeted at ${role} @ ${company}.`);
-  thinking.push(`Intensity ${intensity}; evidenced tools mentioned: ${tools.slice(0, 5).join(", ") || "none"}.`);
+  const letter = renderDeterministicLetter(resume, strategy, intensity, analyzed);
+  thinking.push("Writer: deterministic strategy letter.");
+  return { letter, thinking, strategy };
+}
 
+function renderDeterministicLetter(
+  resume: StructuredResume,
+  strategy: CoverLetterStrategy,
+  intensity: TailorIntensity,
+  analyzed: JdAnalysis,
+): string {
+  const name = resume.contact.fullName || "Candidate";
   const today = new Date().toLocaleDateString("en-US", {
     year: "numeric",
     month: "long",
     day: "numeric",
   });
+  const recent = resume.experience[0];
+  const tools = analyzed.tools.filter((t) =>
+    new RegExp(`\\b${t.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\b`, "i").test(
+      resumeToPlainText(resume),
+    ),
+  );
 
   const opener =
-    intensity === "hard"
-      ? `I am writing to apply for the ${role} role at ${company}. I am intentionally pivoting toward product engineering, and this role’s focus on shipping real systems is exactly the work I want to grow into.`
-      : intensity === "subtle"
-        ? `I am writing to apply for the ${role} position at ${company}. Your posting aligns closely with the work I have already been doing and the skills I lead with.`
-        : `I am writing to apply for the ${role} role at ${company}. I care about clear product outcomes, and your description matches how I like to work.`;
+    strategy.tone === "pivot_honest"
+      ? `I am writing to apply for the ${strategy.role} role at ${strategy.company}. I bring strong ${strategy.primaryStrength.toLowerCase()} from ${strategy.mostRelevantExperience}, and I am building toward product engineering work with the same discipline around clarity, reliability, and follow-through.`
+      : strategy.tone === "same_domain"
+        ? `I am writing to apply for the ${strategy.role} position at ${strategy.company}. Your posting aligns closely with the work I have already been doing.`
+        : `I am writing to apply for the ${strategy.role} role at ${strategy.company}. I care about clear outcomes, and your description matches how I like to work.`;
 
   const bodyExperience = recent
     ? `Most recently as ${recent.title} at ${recent.company}, I ${summarizeBullets(recent.bullets)}.`
     : resume.summary
-      ? `In short: ${resume.summary.split(/[.!?]/)[0].trim()}.`
+      ? `In short: ${capitalizeSentence(resume.summary.split(/[.!?]/)[0].trim())}.`
       : `I bring hands-on experience clarifying requirements, collaborating across teams, and delivering under real deadlines.`;
 
   const bodyFit =
-    intensity === "hard"
-      ? `I will not claim stack experience I do not have yet. What I do bring is ${
-          transferables.length
-            ? transferables.join(", ").toLowerCase()
-            : "user-facing problem solving, reliability under SLA pressure, and fast learning"
-        }. I am actively aligning toward ${
-          analyzed.tools.slice(0, 5).join(", ") || "your core stack"
-        } and I want to contribute from day one on ownership-heavy product work.`
+    strategy.tone === "pivot_honest"
+      ? `I will not claim technologies I have not used. What I do bring is ${strategy.primaryStrength.toLowerCase()} and ${strategy.secondaryStrength.toLowerCase()}. I want to contribute on ownership-heavy product work and grow into ${
+          analyzed.tools.slice(0, 4).join(", ") || "your core stack"
+        } with integrity.`
       : tools.length
-        ? `I already work with ${tools.slice(0, 5).join(", ")}, and I am comfortable owning features from a vague problem through production.`
-        : `I am strongest at turning ambiguous user needs into shipped outcomes, documenting clearly, and staying close to quality signals after release.`;
+        ? `I already work with ${tools.slice(0, 5).join(", ")}, and I am comfortable owning work from a vague problem through delivery.`
+        : `I am strongest at turning ambiguous needs into clear next steps, documenting carefully, and staying close to quality signals.`;
 
-  const bodyThemes = themes.length
-    ? `I was particularly drawn to your emphasis on ${themes.slice(0, 4).join(", ")}.`
-    : `I was particularly drawn to how your team ships quickly while staying close to real users.`;
+  const bodyThemes = analyzed.keywords.slice(0, 4).length
+    ? `I was particularly drawn to your emphasis on ${analyzed.keywords.slice(0, 4).join(", ")}.`
+    : `I was particularly drawn to how your team ships while staying close to real users.`;
 
-  const close = `Thank you for your time and consideration. I would welcome the chance to discuss how I can help ${company} move faster on this role’s priorities.\n\nSincerely,\n${name}${
+  const close = `Thank you for your time and consideration. I would welcome the chance to discuss how I can help ${strategy.company} move faster on this role's priorities.\n\nSincerely,\n${name}${
     resume.contact.email ? `\n${resume.contact.email}` : ""
   }${resume.contact.phone ? `\n${resume.contact.phone}` : ""}`;
 
-  const letter = [
+  return [
     today,
     "",
-    `Dear ${company} Hiring Team,`,
+    `Dear ${strategy.company} Hiring Team,`,
     "",
-    opener,
+    capitalizeSentence(opener),
     "",
     bodyExperience,
     "",
@@ -97,8 +156,6 @@ export function buildCoverLetter(
     "",
     close,
   ].join("\n");
-
-  return { letter, thinking };
 }
 
 function summarizeBullets(bullets: string[]): string {
@@ -108,4 +165,19 @@ function summarizeBullets(bullets: string[]): string {
     return `${first.charAt(0).toLowerCase()}${first.slice(1)}, and ${second.charAt(0).toLowerCase()}${second.slice(1)}`;
   }
   return `${first.charAt(0).toLowerCase()}${first.slice(1)}`;
+}
+
+// Sync wrapper for routes that cannot await (prefer async buildCoverLetter)
+export function buildCoverLetterSync(
+  resume: StructuredResume,
+  jobDescription: string,
+  intensity: TailorIntensity = "medium",
+  analysis?: JdAnalysis,
+): { letter: string; thinking: string[] } {
+  const analyzed = analysis ?? analyzeJobDescription(jobDescription);
+  const strategy = buildCoverLetterStrategy(resume, jobDescription, intensity, analyzed);
+  return {
+    letter: renderDeterministicLetter(resume, strategy, intensity, analyzed),
+    thinking: [`Cover letter targeted at ${strategy.role} @ ${strategy.company}.`],
+  };
 }

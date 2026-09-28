@@ -1,26 +1,19 @@
-# Resume-Builder
+# Alfred Terminal
 
-ATS-friendly resume tailor with **Google Sign-In**, locked **Smart Thinking** (no LLM API keys), and dual **PDF + DOCX** export. Session-only.
+> Your career, intelligently optimized.
+
+AI resume tailor + cover letter assistant. **Tailored to the job. True to you.**
+
+Domain target: `alfredterminal.xyz`
 
 ## How it works
 
-1. Import PDF / DOCX / TXT / MD (or paste text)
+1. Import PDF / DOCX / TXT / MD
 2. Paste a job description
-3. **Smart Thinking** analyzes the JD and ranks your existing content
-4. Download ATS-friendly PDF + DOCX with clickable links
-
-### NLP stack (no Gemini)
-
-| Library | Role |
-|---------|------|
-| `compromise` | Nouns, topics, organizations |
-| custom TF-IDF | Cosine similarity (no `natural` — Vercel-safe) |
-| `keyword-extractor` | Keyword candidates |
-| `stopword` | Stopword filtering |
-| `mammoth` / `unpdf` | DOCX / PDF text + links |
-| `docx` / `@react-pdf/renderer` | Exports |
-
-Smart Thinking never invents employers, degrees, or metrics. Gaps are reported honestly.
+3. Alfred builds an optimization plan (deterministic; Jev when `TYPESAFE_API_KEY` is set)
+4. Writer: free deterministic polish, or Pro Claude when `ANTHROPIC_API_KEY` + Pro entitlement
+5. Validate (capitalization, no invented tech) → PDF / DOCX
+6. One-click cover letter (strategy → prose)
 
 ## Local setup
 
@@ -31,17 +24,16 @@ npm install
 npm run dev
 ```
 
-### Environment variables
+See `.env.example` for Auth, Anthropic, TypeSafe (Jev), and Razorpay stubs.
 
-| Variable | Purpose |
-|----------|---------|
-| `AUTH_SECRET` | Random secret (`openssl rand -base64 32`) |
-| `AUTH_GOOGLE_ID` | Google OAuth client ID |
-| `AUTH_GOOGLE_SECRET` | Google OAuth client secret |
-| `AUTH_URL` | App URL |
+## Quality check
 
-No AI provider keys.
+```bash
+npx tsx scripts/golden-anas.ts
+```
 
-## Deploy
+## Pricing (stubs until Razorpay is live)
 
-Push to GitHub → Vercel project with the Auth env vars above.
+- Free: Subtle / Medium
+- Pro: ₹50/mo — Hard + Claude when configured
+- Tips + public opt-in leaderboard at `/pricing`

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auth } from "@/auth";
 import { apiError, requireSession } from "@/lib/api";
 import { buildCoverLetter } from "@/lib/cover-letter";
 import type { TailorIntensity } from "@/lib/center";
@@ -13,6 +14,7 @@ export async function POST(req: Request) {
   if (error) return error;
 
   try {
+    const session = await auth();
     const body = await req.json();
     const jobDescription = String(body.jobDescription || "").trim();
     if (!jobDescription || jobDescription.length < 40) {
@@ -24,8 +26,14 @@ export async function POST(req: Request) {
       ? (rawIntensity as TailorIntensity)
       : "medium";
 
-    const { letter } = buildCoverLetter(resume, jobDescription, intensity);
-    return NextResponse.json({ letter, intensity });
+    const { letter, strategy } = await buildCoverLetter(
+      resume,
+      jobDescription,
+      intensity,
+      undefined,
+      session?.user?.email,
+    );
+    return NextResponse.json({ letter, intensity, strategy });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Cover letter failed";
     return apiError(message, 400);

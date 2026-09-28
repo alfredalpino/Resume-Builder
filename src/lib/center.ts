@@ -17,6 +17,7 @@ import {
   resumeToPlainText,
   type StructuredResume,
 } from "@/lib/schema";
+import { capitalizeSentence, polishResume, titleCasePhrase } from "@/lib/resume/polish";
 
 export type PivotDistance = "same" | "adjacent" | "hard";
 
@@ -294,14 +295,14 @@ function buildHeadlineParts(
   distance: PivotDistance,
   evidenced: string[],
 ): string[] {
-  const target = pickBestTitle(analysis.titleHints, analysis.domain);
+  const target = titleCasePhrase(pickBestTitle(analysis.titleHints, analysis.domain));
 
   if (distance === "hard") {
-    return [
-      `Aspiring ${target.replace(/^Aspiring\s+/i, "")}`,
+    return uniquePreserve([
+      target,
       "User-Facing Problem Solver",
-      "Fast Learner",
-    ];
+      "Cross-Functional Collaborator",
+    ]);
   }
 
   const stack = evidenced.slice(0, 4);
@@ -309,13 +310,13 @@ function buildHeadlineParts(
     return uniquePreserve([
       target,
       ...stack,
-      analysis.domain === "ai" ? "Product-minded builder" : "Full-stack builder",
+      analysis.domain === "ai" ? "Product-Minded Builder" : "Full-Stack Builder",
     ]);
   }
 
   const bits = [target, ...stack];
   if (analysis.softSkills.some((s) => /ownership|ship|bias/i.test(s))) {
-    bits.push("Owns delivery end to end");
+    bits.push("Owns Delivery End To End");
   }
   return uniquePreserve(bits).slice(0, 5);
 }
@@ -337,11 +338,14 @@ function buildSummary(
   transferables: string[],
   lex: LexRule[],
 ): string {
-  const target = pickBestTitle(analysis.titleHints, analysis.domain);
-  // Only themes the candidate can honestly claim adjacency to (ops→eng stays ops-flavored)
+  const target = titleCasePhrase(pickBestTitle(analysis.titleHints, analysis.domain));
   const themeLine = themes
-    .filter((t) => !/user-facing ui|typescript|python|react|next/i.test(t) || evidenced.some((e) => normalize(e) === normalize(t)))
-    .slice(0, 4)
+    .filter(
+      (t) =>
+        !/user-facing ui|typescript|python|react|next/i.test(t) ||
+        evidenced.some((e) => normalize(e) === normalize(t)),
+    )
+    .slice(0, 3)
     .join("; ");
   const stackLine = evidenced.slice(0, 6).join(", ");
 
@@ -350,24 +354,35 @@ function buildSummary(
       .replace(/eager to grow in[^.]*\./gi, "")
       .replace(/\bcustomer care associate with\b/gi, "")
       .replace(/\bcustomer-facing operations professional with\b/gi, "")
+      .replace(/\bfollowing up politely\.?/gi, "")
       .replace(/\s{2,}/g, " ")
       .trim();
-    const bg = truncateAtWord(cleanSentence(bgRaw), 240);
-    // Industry pattern: lead with target role + proven ops signal, not "deliberate pivot" coach-speak
-    return cleanSentence(
-      [
-        `${target} candidate with proven user-facing operations experience and a track record of clarifying requirements under SLA pressure.`,
-        bg ? capitalize(bg.replace(/\.$/, "")) + "." : "",
-        transferables.length
-          ? `Strengths: ${transferables.slice(0, 4).join("; ").toLowerCase()}.`
-          : "",
-        themeLine
-          ? `Focusing next on ${/^[A-Z]{2,}/.test(themeLine) ? themeLine : themeLine.replace(/^./, (c) => c.toLowerCase())}.`
-          : "",
-      ]
-        .filter(Boolean)
-        .join(" "),
-    ).slice(0, 700);
+    const bgSentence = truncateAtWord(
+      cleanSentence(
+        bgRaw
+          .split(/(?<=[.!?])\s+/)
+          .filter((s) => !/politely|eager to grow|voice\s*\/\s*non-voice/i.test(s))
+          .slice(0, 2)
+          .join(" ")
+          .replace(/\band\s*$/i, "")
+          .replace(/,\s*$/g, ""),
+      ),
+      200,
+    );
+    const strengthBits = transferables
+      .slice(0, 3)
+      .map((t) => t.replace(/^./, (c) => c.toLowerCase()));
+    const body = [
+      `${target} with hands-on user-facing operations experience clarifying requirements and delivering under SLA pressure.`,
+      bgSentence ? capitalizeSentence(bgSentence.replace(/\.$/, "")) + "." : "",
+      strengthBits.length ? `Strengths include ${strengthBits.join("; ")}.` : "",
+      themeLine
+        ? `Building toward ${/^[A-Z]{2,}/.test(themeLine) ? themeLine : themeLine.replace(/^./, (c) => c.toLowerCase())}.`
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    return capitalizeSentence(cleanSentence(body)).slice(0, 700);
   }
 
   const sourceFacts = truncateAtWord(
@@ -391,15 +406,17 @@ function buildSummary(
         ? `${target} focused on reliable, multi-channel user operations and SLA-grade delivery.`
         : `${target} who owns features end to end — from vague problem to shipped production.`;
 
-  return cleanSentence(
-    [
-      opener,
-      sourceFacts ? capitalize(sourceFacts.replace(/\.$/, "")) + "." : "",
-      stackLine ? `Evidence stack: ${stackLine}.` : "",
-      themeLine ? `Centered on this role's themes: ${themeLine}.` : "",
-    ]
-      .filter(Boolean)
-      .join(" "),
+  return capitalizeSentence(
+    cleanSentence(
+      [
+        opener,
+        sourceFacts ? capitalizeSentence(sourceFacts.replace(/\.$/, "")) + "." : "",
+        stackLine ? `Evidence stack: ${stackLine}.` : "",
+        themeLine ? `Centered on this role's themes: ${themeLine}.` : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    ),
   ).slice(0, 700);
 }
 
@@ -605,10 +622,11 @@ export function centerResumeForJd(
 
   if (intensity === "subtle") {
     applySubtle(next, analyzed, keywords, evidenced, themes, thinking);
-    const headlineParts = next.headline
-      ? next.headline.split(/\s*\|\s*/).map((s) => s.trim()).filter(Boolean)
+    const polished = polishResume(next);
+    const headlineParts = polished.headline
+      ? polished.headline.split(/\s*\|\s*/).map((s) => s.trim()).filter(Boolean)
       : [];
-    return { resume: next, thinking, analysis: analyzed, distance, intensity, headlineParts };
+    return { resume: polished, thinking, analysis: analyzed, distance, intensity, headlineParts };
   }
 
   if (intensity === "medium") {
@@ -621,11 +639,19 @@ export function centerResumeForJd(
         ),
     );
     const headlineParts = applyMedium(next, analyzed, framing, themes, evidenced, missing, transferables, mildLex, keywords, resumeDomain, thinking);
-    return { resume: next, thinking, analysis: analyzed, distance, intensity, headlineParts };
+    const polishedMed = polishResume(next);
+    const medParts = polishedMed.headline
+      ? polishedMed.headline.split(/\s*\|\s*/).map((s) => s.trim()).filter(Boolean)
+      : headlineParts;
+    return { resume: polishedMed, thinking, analysis: analyzed, distance, intensity, headlineParts: medParts };
   }
 
-  const headlineParts = applyHard(next, analyzed, distance, themes, evidenced, missing, transferables, lex, keywords, resumeDomain, thinking);
-  return { resume: next, thinking, analysis: analyzed, distance, intensity, headlineParts };
+  applyHard(next, analyzed, distance, themes, evidenced, missing, transferables, lex, keywords, resumeDomain, thinking);
+  const polishedHard = polishResume(next);
+  const hardParts = polishedHard.headline
+    ? polishedHard.headline.split(/\s*\|\s*/).map((s) => s.trim()).filter(Boolean)
+    : [];
+  return { resume: polishedHard, thinking, analysis: analyzed, distance, intensity, headlineParts: hardParts };
 }
 
 function cleanContact(resume: StructuredResume): StructuredResume {

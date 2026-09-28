@@ -1,0 +1,30 @@
+/* Alfred Terminal brand tokens — docs/Brand-ID.md */
+:root {
+  --terminal-black: #0a0a0b;
+  --terminal-surface: #111113;
+  --terminal-elevated: #18181b;
+  --terminal-white: #f5f5f5;
+  --terminal-gray: #a1a1aa;
+  --terminal-muted: #71717a;
+  --alfred-amber: #f5a524;
+  --terminal-gold: #ffd166;
+  --terminal-border: rgba(255, 255, 255, 0.08);
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --background: var(--terminal-black);
+  --foreground: var(--terminal-white);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-terminal-black: var(--terminal-black);
+  --color-terminal-surface: var(--terminal-surface);
+  --color-terminal-elevated: var(--terminal-elevated);
+  --color-terminal-white: var(--terminal-white);
+  --color-terminal-gray: var(--terminal-gray);
+  --color-alfred-amber: var(--alfred-amber);
+  --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, monospace;
+}

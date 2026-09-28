@@ -7,9 +7,9 @@ export function SignInButton() {
     <button
       type="button"
       onClick={() => signIn("google", { callbackUrl: "/app" })}
-      className="inline-flex items-center justify-center rounded-md bg-teal-700 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2"
+      className="inline-flex items-center justify-center rounded-lg bg-[var(--alfred-amber)] px-5 py-2.5 text-sm font-medium text-[var(--terminal-black)] transition hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-[var(--alfred-amber)] focus:ring-offset-2 focus:ring-offset-[var(--terminal-black)]"
     >
-      Continue with Google
+      Tailor My Resume
     </button>
   );
 }
@@ -19,7 +19,7 @@ export function SignOutButton() {
     <button
       type="button"
       onClick={() => signOut({ callbackUrl: "/" })}
-      className="rounded-md border border-stone-300 px-3 py-1.5 text-sm text-stone-700 transition hover:bg-stone-100"
+      className="rounded-md border border-[var(--terminal-border)] px-3 py-1.5 text-sm text-[var(--terminal-gray)] transition hover:border-[var(--alfred-amber)]/40 hover:text-[var(--terminal-white)]"
     >
       Sign out
     </button>

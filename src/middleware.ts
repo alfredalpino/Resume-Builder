@@ -11,11 +11,12 @@ export default auth((req) => {
     return NextResponse.redirect(url);
   }
 
-  if (
-    pathname.startsWith("/api/") &&
-    !pathname.startsWith("/api/auth") &&
-    !isAuthed
-  ) {
+  const publicApi =
+    pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/tips/leaderboard") ||
+    pathname.startsWith("/api/billing/webhook");
+
+  if (pathname.startsWith("/api/") && !publicApi && !isAuthed) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -23,5 +24,14 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/app/:path*", "/api/parse", "/api/tailor", "/api/score", "/api/export/:path*"],
+  matcher: [
+    "/app/:path*",
+    "/api/parse",
+    "/api/tailor",
+    "/api/score",
+    "/api/export/:path*",
+    "/api/cover-letter/:path*",
+    "/api/billing/:path*",
+    "/api/tips/:path*",
+  ],
 };

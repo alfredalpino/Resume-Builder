@@ -1,23 +1,28 @@
 import type { Metadata } from "next";
-import { DM_Sans, IBM_Plex_Mono } from "next/font/google";
+import { Geist, JetBrains_Mono } from "next/font/google";
 import { Providers } from "@/components/providers";
 import "./globals.css";
 
-const sans = DM_Sans({
+const sans = Geist({
   variable: "--font-sans",
   subsets: ["latin"],
 });
 
-const mono = IBM_Plex_Mono({
+const mono = JetBrains_Mono({
   variable: "--font-mono",
-  weight: ["400", "500"],
   subsets: ["latin"],
+  weight: ["400", "500"],
 });
 
 export const metadata: Metadata = {
-  title: "Resume-Builder",
+  title: "Alfred Terminal — AI Resume Tailoring & Cover Letters",
   description:
-    "BYOK Gemini resume tailor — ATS-friendly PDF and DOCX with Google Sign-In",
+    "Tailor your resume to specific job descriptions and generate relevant cover letters. ATS-friendly, fact-focused, and built for modern job seekers.",
+  openGraph: {
+    title: "Alfred Terminal — Your Career, Intelligently Optimized",
+    description:
+      "Tailor your resume to the job. Generate a relevant cover letter. Keep every fact true.",
+  },
 };
 
 export default function RootLayout({
@@ -27,7 +32,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${sans.variable} ${mono.variable} h-full antialiased`}>
-      <body className="min-h-full font-sans text-stone-900">
+      <body className="min-h-full bg-[var(--terminal-black)] font-sans text-[var(--terminal-white)]">
         <Providers>{children}</Providers>
       </body>
     </html>

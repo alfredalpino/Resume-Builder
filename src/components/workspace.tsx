@@ -64,10 +64,10 @@ function ResumeCard({
   return (
     <article
       style={css}
-      className="max-h-[min(78vh,880px)] overflow-auto rounded-md border border-stone-200 bg-white p-6 text-[#111] shadow-inner"
+      className="max-h-[min(78vh,880px)] overflow-auto rounded-md border border-[var(--terminal-border)] bg-[var(--terminal-surface)] p-6 text-[#111] shadow-inner"
     >
       <p
-        className="mb-2 text-center font-semibold uppercase tracking-wider text-teal-800"
+        className="mb-2 text-center font-semibold uppercase tracking-wider text-[var(--alfred-amber)]"
         style={{ fontSize: Math.max(8, style.fontSize - 1) }}
       >
         {label}
@@ -119,7 +119,7 @@ function ResumeCard({
               <p className="font-bold">
                 {job.company} — {job.title}
               </p>
-              <p style={{ fontSize: Math.max(8, style.fontSize - 1) }} className="text-stone-600">
+              <p style={{ fontSize: Math.max(8, style.fontSize - 1) }} className="text-[var(--terminal-gray)]">
                 {job.start} – {job.end}
                 {job.location ? `  ·  ${job.location}` : ""}
               </p>
@@ -186,6 +186,12 @@ export function Workspace({ userName, userEmail }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>("preview");
   const [coverLetter, setCoverLetter] = useState("");
   const [copied, setCopied] = useState(false);
+  const [step, setStep] = useState(1);
+  const [humanAnalysis, setHumanAnalysis] = useState<{
+    strongMatches: string[];
+    needsAttention: string[];
+    opportunities: string[];
+  } | null>(null);
   const scoreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -228,6 +234,8 @@ export function Workspace({ userName, userEmail }: Props) {
     setAppliedIntensity(null);
     setCoverLetter("");
     setViewMode("preview");
+    setHumanAnalysis(null);
+    setStep(2);
     if (text !== undefined) setRawText(text);
   }
 
@@ -315,11 +323,18 @@ export function Workspace({ userName, userEmail }: Props) {
         resume: StructuredResume;
         score: AtsScore;
         intensity?: TailorIntensity;
+        humanAnalysis?: {
+          strongMatches: string[];
+          needsAttention: string[];
+          opportunities: string[];
+        };
       };
       setResume(data.resume);
       setScore(data.score);
       setAppliedIntensity(data.intensity || nextIntensity);
+      setHumanAnalysis(data.humanAnalysis || null);
       setViewMode("compare");
+      setStep(5);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Tailoring failed");
     } finally {
@@ -429,39 +444,83 @@ export function Workspace({ userName, userEmail }: Props) {
     setResume((r) => ({ ...r, contact: { ...r.contact, [field]: value } }));
   }
 
+  const steps = [
+    "Resume",
+    "Job Description",
+    "Analysis",
+    "Tailoring",
+    "Review",
+    "Download",
+  ];
+
   return (
-    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#e8f5f2_0%,_#f7f4ef_45%,_#f3efe8_100%)] text-stone-900">
-      <header className="border-b border-stone-200/80 bg-white/70 backdrop-blur">
+    <div className="min-h-screen bg-[var(--terminal-black)] text-[var(--terminal-white)]">
+      <header className="border-b border-[var(--terminal-border)] bg-[var(--terminal-surface)]">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3">
           <div>
-            <p className="text-lg font-semibold tracking-tight">Resume-Builder</p>
-            <p className="text-xs text-stone-500">
-              {userName || userEmail || "user"} · vibe editor · cover letter · live ATS
+            <p className="flex items-center gap-2 text-lg font-semibold tracking-tight">
+              <span className="font-mono text-[var(--alfred-amber)]">&gt;_</span>
+              Alfred Terminal
+            </p>
+            <p className="text-xs text-[var(--terminal-gray)]">
+              {userName || userEmail || "user"} · Tailored to the job. True to you.
             </p>
           </div>
-          <SignOutButton />
+          <div className="flex items-center gap-3">
+            <a href="/pricing" className="text-sm text-[var(--terminal-gray)] hover:text-[var(--alfred-amber)]">
+              Pricing
+            </a>
+            <SignOutButton />
+          </div>
+        </div>
+        <div className="mx-auto flex max-w-7xl gap-2 overflow-x-auto px-4 pb-3">
+          {steps.map((label, i) => {
+            const n = i + 1;
+            const active = step === n;
+            return (
+              <button
+                key={label}
+                type="button"
+                onClick={() => setStep(n)}
+                className={`shrink-0 rounded-md px-2.5 py-1 font-mono text-[11px] ${
+                  active
+                    ? "bg-[var(--alfred-amber)]/15 text-[var(--alfred-amber)]"
+                    : "text-[var(--terminal-muted)] hover:text-[var(--terminal-gray)]"
+                }`}
+              >
+                {String(n).padStart(2, "0")} — {label}
+              </button>
+            );
+          })}
         </div>
         {busy === "tailor" || busy === "cover" || progress > 0 ? (
-          <div className="h-1.5 w-full bg-stone-200">
+          <div className="h-1 w-full bg-[var(--terminal-elevated)]">
             <div
-              className="h-full bg-teal-600 transition-all duration-300 ease-out"
+              className="h-full bg-[var(--alfred-amber)] transition-all duration-300 ease-out"
               style={{ width: `${Math.max(progress, busy ? 8 : 0)}%` }}
             />
           </div>
         ) : (
-          <div className="h-1.5 w-full bg-transparent" />
+          <div className="h-1 w-full bg-transparent" />
+        )}
+        {(busy === "tailor" || busy === "cover") && (
+          <p className="px-4 py-1 font-mono text-[11px] text-[var(--alfred-amber)]">
+            {busy === "tailor"
+              ? "> ANALYZING RESUME... BUILDING TAILORED RESUME..."
+              : "> WRITING COVER LETTER..."}
+          </p>
         )}
       </header>
 
       <main className="mx-auto grid max-w-7xl gap-6 px-4 py-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,440px)]">
         <div className="flex flex-col gap-5">
-          <section className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
-              1 · Import resume
+          <section className="rounded-xl border border-[var(--terminal-border)] bg-[var(--terminal-surface)] p-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--terminal-gray)]">
+              01 — Resume
             </h2>
-            <label className="mt-3 flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-stone-300 bg-stone-50 px-4 py-6 text-center hover:border-teal-600">
+            <label className="mt-3 flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-[var(--terminal-border)] bg-[var(--terminal-elevated)] px-4 py-6 text-center hover:border-[var(--alfred-amber)]">
               <span className="text-sm font-medium">Drop PDF / DOCX / TXT / MD</span>
-              <span className="mt-1 text-xs text-stone-500">
+              <span className="mt-1 text-xs text-[var(--terminal-muted)]">
                 {fileName || "or click to browse · max 5 MB"}
               </span>
               <input
@@ -476,34 +535,34 @@ export function Workspace({ userName, userEmail }: Props) {
               onChange={(e) => setRawText(e.target.value)}
               placeholder="Or paste resume text…"
               rows={5}
-              className="mt-3 w-full rounded-md border border-stone-300 px-3 py-2 font-mono text-xs outline-none focus:border-teal-600"
+              className="mt-3 w-full rounded-md border border-[var(--terminal-border)] bg-[var(--terminal-elevated)] px-3 py-2 font-mono text-xs text-[var(--terminal-white)] outline-none focus:border-[var(--alfred-amber)]"
             />
             <button
               type="button"
               disabled={!!busy}
               onClick={parsePastedText}
-              className="mt-2 rounded-md border border-stone-300 px-3 py-1.5 text-sm hover:bg-stone-50 disabled:opacity-50"
+              className="mt-2 rounded-md border border-[var(--terminal-border)] px-3 py-1.5 text-sm hover:bg-[var(--terminal-elevated)] disabled:opacity-50"
             >
               {busy === "parse" ? "Parsing…" : "Parse pasted text"}
             </button>
           </section>
 
-          <section className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
-              2 · Job description
+          <section className="rounded-xl border border-[var(--terminal-border)] bg-[var(--terminal-surface)] p-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--terminal-gray)]">
+              02 — Job Description
             </h2>
             <textarea
               value={jobDescription}
               onChange={(e) => setJobDescription(e.target.value)}
               placeholder="Paste the full job description…"
               rows={8}
-              className="mt-3 w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-teal-600"
+              className="mt-3 w-full rounded-md border border-[var(--terminal-border)] bg-[var(--terminal-elevated)] px-3 py-2 text-sm text-[var(--terminal-white)] outline-none focus:border-[var(--alfred-amber)]"
             />
           </section>
 
-          <section className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
-              3 · Rewrite intensity
+          <section className="rounded-xl border border-[var(--terminal-border)] bg-[var(--terminal-surface)] p-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--terminal-gray)]">
+              04 — Tailoring
             </h2>
             <div className="mt-3 grid gap-2 sm:grid-cols-3">
               {(["subtle", "medium", "hard"] as TailorIntensity[]).map((mode) => {
@@ -516,12 +575,12 @@ export function Workspace({ userName, userEmail }: Props) {
                     onClick={() => setIntensity(mode)}
                     className={`rounded-lg border px-3 py-3 text-left ${
                       active
-                        ? "border-teal-700 bg-teal-50 ring-1 ring-teal-700"
-                        : "border-stone-200 bg-stone-50 hover:border-teal-500"
+                        ? "border-[var(--alfred-amber)] bg-[var(--alfred-amber)]/10 ring-1 ring-[var(--alfred-amber)]"
+                        : "border-[var(--terminal-border)] bg-[var(--terminal-elevated)] hover:border-[var(--alfred-amber)]/50"
                     }`}
                   >
                     <p className="text-sm font-semibold">{meta.label}</p>
-                    <p className="mt-1 text-xs text-stone-600">{meta.blurb}</p>
+                    <p className="mt-1 text-xs text-[var(--terminal-gray)]">{meta.blurb}</p>
                   </button>
                 );
               })}
@@ -531,7 +590,7 @@ export function Workspace({ userName, userEmail }: Props) {
                 type="button"
                 disabled={!!busy}
                 onClick={() => tailor(intensity)}
-                className="rounded-md bg-teal-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-50"
+                className="rounded-md bg-[var(--alfred-amber)] px-4 py-2.5 text-sm font-medium text-[var(--terminal-black)] hover:brightness-110 disabled:opacity-50"
               >
                 {busy === "tailor"
                   ? "Working…"
@@ -541,18 +600,53 @@ export function Workspace({ userName, userEmail }: Props) {
                 type="button"
                 disabled={!!busy || !hasSource}
                 onClick={resetToOriginal}
-                className="rounded-md border border-stone-300 px-4 py-2.5 text-sm font-medium disabled:opacity-50"
+                className="rounded-md border border-[var(--terminal-border)] px-4 py-2.5 text-sm font-medium disabled:opacity-50"
               >
                 Reset to original
               </button>
             </div>
           </section>
 
-          <section className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
-              Vibe editor
+          {humanAnalysis ? (
+            <section className="rounded-xl border border-[var(--terminal-border)] bg-[var(--terminal-surface)] p-4">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--terminal-gray)]">
+                03 — Analysis
+              </h2>
+              <p className="mt-1 text-xs text-[var(--terminal-muted)]">Alfred found the following for this role.</p>
+              <div className="mt-3 grid gap-3 md:grid-cols-3">
+                <div>
+                  <p className="text-xs font-semibold text-[var(--success)]">Strong matches</p>
+                  <ul className="mt-1 space-y-1 text-xs text-[var(--terminal-gray)]">
+                    {humanAnalysis.strongMatches.length ? humanAnalysis.strongMatches.map((m) => (
+                      <li key={m}>✓ {m}</li>
+                    )) : <li>None yet</li>}
+                  </ul>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-[var(--warning)]">Needs attention</p>
+                  <ul className="mt-1 space-y-1 text-xs text-[var(--terminal-gray)]">
+                    {humanAnalysis.needsAttention.length ? humanAnalysis.needsAttention.map((m) => (
+                      <li key={m}>• {m}</li>
+                    )) : <li>No major gaps</li>}
+                  </ul>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-[var(--alfred-amber)]">Opportunities</p>
+                  <ul className="mt-1 space-y-1 text-xs text-[var(--terminal-gray)]">
+                    {humanAnalysis.opportunities.slice(0, 5).map((m) => (
+                      <li key={m}>• {m}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          <section className="rounded-xl border border-[var(--terminal-border)] bg-[var(--terminal-surface)] p-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--terminal-gray)]">
+              05 — Review · Vibe
             </h2>
-            <p className="mt-1 text-xs text-stone-500">
+            <p className="mt-1 text-xs text-[var(--terminal-muted)]">
               Live preview and PDF/DOCX exports use these settings.
             </p>
             <label className="mt-3 flex items-center gap-2 text-sm">
@@ -571,7 +665,7 @@ export function Workspace({ userName, userEmail }: Props) {
                   Font
                 </span>
                 <select
-                  className="w-full rounded-md border border-stone-300 px-3 py-2"
+                  className="w-full rounded-md border border-[var(--terminal-border)] px-3 py-2"
                   value={style.fontFamily}
                   onChange={(e) =>
                     setStyle((s) => ({
@@ -604,11 +698,11 @@ export function Workspace({ userName, userEmail }: Props) {
             </div>
           </section>
 
-          <section className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
-              Cover letter
+          <section className="rounded-xl border border-[var(--terminal-border)] bg-[var(--terminal-surface)] p-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--terminal-gray)]">
+              Cover Letter
             </h2>
-            <p className="mt-1 text-xs text-stone-500">
+            <p className="mt-1 text-xs text-[var(--terminal-muted)]">
               Written from your tailored resume + JD. Truthful — no invented stack.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -616,7 +710,7 @@ export function Workspace({ userName, userEmail }: Props) {
                 type="button"
                 disabled={!!busy}
                 onClick={generateCoverLetter}
-                className="rounded-md bg-teal-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                className="rounded-md bg-[var(--alfred-amber)] px-4 py-2 text-sm font-medium text-[var(--terminal-black)] disabled:opacity-50"
               >
                 {busy === "cover" ? "Writing…" : "Generate cover letter"}
               </button>
@@ -624,7 +718,7 @@ export function Workspace({ userName, userEmail }: Props) {
                 type="button"
                 disabled={!coverLetter}
                 onClick={copyCoverLetter}
-                className="rounded-md border border-stone-300 px-4 py-2 text-sm font-medium disabled:opacity-50"
+                className="rounded-md border border-[var(--terminal-border)] px-4 py-2 text-sm font-medium disabled:opacity-50"
               >
                 {copied ? "Copied" : "Copy"}
               </button>
@@ -632,7 +726,7 @@ export function Workspace({ userName, userEmail }: Props) {
                 type="button"
                 disabled={!coverLetter || !!busy}
                 onClick={() => exportCover("pdf")}
-                className="rounded-md border border-stone-300 px-4 py-2 text-sm font-medium disabled:opacity-50"
+                className="rounded-md border border-[var(--terminal-border)] px-4 py-2 text-sm font-medium disabled:opacity-50"
               >
                 PDF
               </button>
@@ -640,14 +734,14 @@ export function Workspace({ userName, userEmail }: Props) {
                 type="button"
                 disabled={!coverLetter || !!busy}
                 onClick={() => exportCover("docx")}
-                className="rounded-md border border-stone-300 px-4 py-2 text-sm font-medium disabled:opacity-50"
+                className="rounded-md border border-[var(--terminal-border)] px-4 py-2 text-sm font-medium disabled:opacity-50"
               >
                 DOCX
               </button>
             </div>
             {coverLetter ? (
               <textarea
-                className="mt-3 w-full rounded-md border border-stone-300 px-3 py-2 text-sm leading-relaxed outline-none focus:border-teal-600"
+                className="mt-3 w-full rounded-md border border-[var(--terminal-border)] px-3 py-2 text-sm leading-relaxed outline-none focus:border-[var(--alfred-amber)]"
                 rows={14}
                 value={coverLetter}
                 onChange={(e) => setCoverLetter(e.target.value)}
@@ -656,18 +750,18 @@ export function Workspace({ userName, userEmail }: Props) {
           </section>
 
           {error ? (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            <div className="rounded-lg border border-[var(--error)]/40 bg-[var(--error)]/10 px-4 py-3 text-sm text-red-300">
               {error}
             </div>
           ) : null}
 
           {score ? (
-            <section className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
+            <section className="rounded-xl border border-[var(--terminal-border)] bg-[var(--terminal-surface)] p-4">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--terminal-gray)]">
                     ATS score
-                    <span className="ml-2 rounded bg-teal-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-teal-800">
+                    <span className="ml-2 rounded bg-[var(--alfred-amber)]/20 px-2 py-0.5 text-[10px] font-semibold uppercase text-[var(--alfred-amber)]">
                       live
                     </span>
                   </h2>
@@ -677,7 +771,7 @@ export function Workspace({ userName, userEmail }: Props) {
                       target {score.target}%
                     </span>
                   </p>
-                  <p className="text-xs text-stone-500">
+                  <p className="text-xs text-[var(--terminal-muted)]">
                     Skills {score.keywordScore}% · TF-IDF {score.similarity ?? "—"}% · Format{" "}
                     {score.formatScore}%
                   </p>
@@ -687,7 +781,7 @@ export function Workspace({ userName, userEmail }: Props) {
                     type="button"
                     disabled={!!busy}
                     onClick={() => exportFile("pdf")}
-                    className="rounded-md bg-stone-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                    className="rounded-md bg-[var(--terminal-elevated)] px-4 py-2 text-sm font-medium text-[var(--terminal-black)] disabled:opacity-50"
                   >
                     {busy === "pdf" ? "Building…" : "Download PDF"}
                   </button>
@@ -695,7 +789,7 @@ export function Workspace({ userName, userEmail }: Props) {
                     type="button"
                     disabled={!!busy}
                     onClick={() => exportFile("docx")}
-                    className="rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+                    className="rounded-md border border-[var(--terminal-border)] bg-white px-4 py-2 text-sm font-medium disabled:opacity-50"
                   >
                     {busy === "docx" ? "Building…" : "Download DOCX"}
                   </button>
@@ -703,24 +797,24 @@ export function Workspace({ userName, userEmail }: Props) {
               </div>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <div>
-                  <p className="text-xs font-semibold uppercase text-teal-800">Skill overlaps</p>
+                  <p className="text-xs font-semibold uppercase text-[var(--alfred-amber)]">Skill overlaps</p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {score.hits.length ? (
                       score.hits.map((h) => (
                         <span
                           key={h}
-                          className="rounded bg-teal-50 px-2 py-0.5 text-xs text-teal-900"
+                          className="rounded bg-[var(--success)]/15 px-2 py-0.5 text-xs text-green-300"
                         >
                           {h}
                         </span>
                       ))
                     ) : (
-                      <span className="text-xs text-stone-500">No stack overlaps yet</span>
+                      <span className="text-xs text-[var(--terminal-muted)]">No stack overlaps yet</span>
                     )}
                   </div>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold uppercase text-amber-800">
+                  <p className="text-xs font-semibold uppercase text-[var(--warning)]">
                     Skill gaps (not on resume)
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
@@ -728,13 +822,13 @@ export function Workspace({ userName, userEmail }: Props) {
                       score.missing.map((h) => (
                         <span
                           key={h}
-                          className="rounded bg-amber-50 px-2 py-0.5 text-xs text-amber-900"
+                          className="rounded bg-[var(--warning)]/15 px-2 py-0.5 text-xs text-amber-200"
                         >
                           {h}
                         </span>
                       ))
                     ) : (
-                      <span className="text-xs text-stone-500">No major stack gaps</span>
+                      <span className="text-xs text-[var(--terminal-muted)]">No major stack gaps</span>
                     )}
                   </div>
                 </div>
@@ -745,17 +839,17 @@ export function Workspace({ userName, userEmail }: Props) {
 
         <aside className="space-y-3 xl:sticky xl:top-4 xl:self-start">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--terminal-gray)]">
               Live view
             </h2>
-            <div className="ml-auto flex gap-1 rounded-md border border-stone-200 bg-white p-0.5">
+            <div className="ml-auto flex gap-1 rounded-md border border-[var(--terminal-border)] bg-[var(--terminal-surface)] p-0.5">
               {(["preview", "compare", "edit"] as ViewMode[]).map((m) => (
                 <button
                   key={m}
                   type="button"
                   onClick={() => setViewMode(m)}
                   className={`rounded px-2 py-1 text-xs font-medium capitalize ${
-                    viewMode === m ? "bg-stone-900 text-white" : "text-stone-600"
+                    viewMode === m ? "bg-[var(--terminal-elevated)] text-[var(--terminal-black)]" : "text-[var(--terminal-gray)]"
                   }`}
                 >
                   {m}
@@ -788,7 +882,7 @@ export function Workspace({ userName, userEmail }: Props) {
           ) : null}
 
           {viewMode === "edit" ? (
-            <div className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
+            <div className="rounded-xl border border-[var(--terminal-border)] bg-[var(--terminal-surface)] p-4">
               <EditPanel
                 resume={resume}
                 setResume={setResume}
@@ -803,7 +897,7 @@ export function Workspace({ userName, userEmail }: Props) {
               type="button"
               disabled={!!busy || !hasSource}
               onClick={() => exportFile("pdf")}
-              className="flex-1 rounded-md bg-stone-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+              className="flex-1 rounded-md bg-[var(--terminal-elevated)] px-3 py-2 text-sm font-medium text-[var(--terminal-black)] disabled:opacity-50"
             >
               PDF
             </button>
@@ -811,7 +905,7 @@ export function Workspace({ userName, userEmail }: Props) {
               type="button"
               disabled={!!busy || !hasSource}
               onClick={() => exportFile("docx")}
-              className="flex-1 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-medium disabled:opacity-50"
+              className="flex-1 rounded-md border border-[var(--terminal-border)] bg-white px-3 py-2 text-sm font-medium disabled:opacity-50"
             >
               DOCX
             </button>
@@ -839,44 +933,44 @@ function EditPanel({
   return (
     <div className="grid gap-2">
       <input
-        className="rounded-md border border-stone-300 px-3 py-2 text-sm"
+        className="rounded-md border border-[var(--terminal-border)] px-3 py-2 text-sm"
         value={resume.contact.fullName}
         onChange={(e) => updateContactField("fullName", e.target.value)}
         placeholder="Full name"
       />
       <input
-        className="rounded-md border border-stone-300 px-3 py-2 text-sm"
+        className="rounded-md border border-[var(--terminal-border)] px-3 py-2 text-sm"
         value={resume.contact.email}
         onChange={(e) => updateContactField("email", e.target.value)}
         placeholder="Email"
       />
       <input
-        className="rounded-md border border-stone-300 px-3 py-2 text-sm"
+        className="rounded-md border border-[var(--terminal-border)] px-3 py-2 text-sm"
         value={resume.contact.phone}
         onChange={(e) => updateContactField("phone", e.target.value)}
         placeholder="Phone"
       />
       <input
-        className="rounded-md border border-stone-300 px-3 py-2 text-sm"
+        className="rounded-md border border-[var(--terminal-border)] px-3 py-2 text-sm"
         value={resume.contact.location || ""}
         onChange={(e) => updateContactField("location", e.target.value)}
         placeholder="Location"
       />
       <input
-        className="rounded-md border border-stone-300 px-3 py-2 text-sm"
+        className="rounded-md border border-[var(--terminal-border)] px-3 py-2 text-sm"
         value={resume.headline}
         onChange={(e) => setResume((r) => ({ ...r, headline: e.target.value }))}
         placeholder="Headline"
       />
       <textarea
-        className="rounded-md border border-stone-300 px-3 py-2 text-sm"
+        className="rounded-md border border-[var(--terminal-border)] px-3 py-2 text-sm"
         rows={5}
         value={resume.summary}
         onChange={(e) => setResume((r) => ({ ...r, summary: e.target.value }))}
         placeholder="Summary"
       />
       <textarea
-        className="rounded-md border border-stone-300 px-3 py-2 font-mono text-xs"
+        className="rounded-md border border-[var(--terminal-border)] px-3 py-2 font-mono text-xs"
         rows={12}
         value={JSON.stringify(resume, null, 2)}
         onChange={(e) => {
