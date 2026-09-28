@@ -66,6 +66,7 @@ export const AtsScoreSchema = z.object({
   missing: z.array(z.string()),
   formatNotes: z.array(z.string()),
   target: z.literal(75),
+  thinking: z.array(z.string()).optional(),
 });
 
 export type AtsScore = z.infer<typeof AtsScoreSchema>;

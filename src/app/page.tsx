@@ -14,15 +14,15 @@ export default async function HomePage() {
           Resume-Builder
         </p>
         <h1 className="mt-4 max-w-xl text-4xl font-semibold tracking-tight text-stone-900 sm:text-5xl">
-          Tailor your resume to any job. No Gemini key required.
+          Tailor your resume with Smart Thinking. Keep every fact true.
         </h1>
         <p className="mt-4 max-w-lg text-base leading-relaxed text-stone-600">
           Import your resume, paste a job description, and download ATS-friendly PDF and DOCX
-          with clickable links. Local ATS runs on-server without quotas. Gemini is optional.
+          with clickable links. Smart Thinking is always on — no keyword spam, no invented experience.
         </p>
         <div className="mt-8 flex flex-wrap items-center gap-3">
           <SignInButton />
-          <span className="text-sm text-stone-500">Google Sign-In · Local ATS · Vercel</span>
+          <span className="text-sm text-stone-500">Google Sign-In · Smart Thinking · Vercel</span>
         </div>
       </main>
     </div>

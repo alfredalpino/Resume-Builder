@@ -1,18 +1,27 @@
-import { extractJdKeywords } from "@/lib/ats-score";
+import {
+  analyzeJobDescription,
+  type JdAnalysis,
+} from "@/lib/ats-score";
 import {
   resumeToPlainText,
   type StructuredResume,
 } from "@/lib/schema";
 
 function normalize(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9+.#/\s-]/g, " ");
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9+.#/\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function overlapScore(text: string, keywords: string[]): number {
   const n = normalize(text);
   let score = 0;
   for (const k of keywords) {
-    if (n.includes(k.toLowerCase())) score += 1;
+    const kn = normalize(k);
+    if (!kn) continue;
+    if (n.includes(kn)) score += kn.includes(" ") ? 3 : 1;
   }
   return score;
 }
@@ -21,7 +30,7 @@ function uniquePreserve(items: string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const item of items) {
-    const key = item.trim().toLowerCase();
+    const key = normalize(item);
     if (!key || seen.has(key)) continue;
     seen.add(key);
     out.push(item.trim());
@@ -29,87 +38,95 @@ function uniquePreserve(items: string[]): string[] {
   return out;
 }
 
-function displayKeyword(term: string): string {
-  if (term === term.toUpperCase() && term.length <= 6) return term;
-  return term
-    .split(/[\s_-]+/)
-    .map((w) =>
-      w.length <= 3 && /[A-Z]/.test(w)
-        ? w
-        : w.charAt(0).toUpperCase() + w.slice(1),
-    )
-    .join(" ");
+function stripPreviousCorruption(text: string): string {
+  return text
+    .replace(/\s*Core strengths aligned to this role include[^.]*\.?/gi, "")
+    .replace(/,?\s*applying\s+[A-Z][^.]{0,60}\./gi, ".")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 /**
- * Truthful local tailor — no API key.
- * Reorders content and weaves JD keywords already evidenced in the resume.
- * Never invents employers, degrees, metrics, or new skills.
+ * Smart Thinking tailor (locked default).
+ * Never invents facts. Never injects raw JD tokens into bullets/summary.
+ * Only: clean prior corruption, reorder by relevance, prioritize real
+ * resume skills that overlap the JD analysis.
  */
-export function tailorResumeLocally(
+export function tailorResumeSmart(
   resume: StructuredResume,
   jobDescription: string,
-): StructuredResume {
-  const keywords = extractJdKeywords(jobDescription);
+  analysis?: JdAnalysis,
+): { resume: StructuredResume; thinking: string[]; analysis: JdAnalysis } {
+  const analyzed = analysis ?? analyzeJobDescription(jobDescription);
+  const thinking = [...analyzed.thinking];
+  const keywords = analyzed.keywords;
   const sourceNorm = normalize(resumeToPlainText(resume));
-  const evidenced = keywords.filter((k) =>
-    sourceNorm.includes(k.toLowerCase()),
-  );
 
   const next: StructuredResume = structuredClone(resume);
 
-  if (!next.headline.trim()) {
-    const roleHits = evidenced.slice(0, 4).map(displayKeyword);
-    if (roleHits.length) next.headline = roleHits.join(" | ");
-  }
+  // Clean any previous bad runs
+  next.summary = stripPreviousCorruption(next.summary);
+  next.experience = next.experience.map((job) => ({
+    ...job,
+    bullets: job.bullets.map(stripPreviousCorruption).filter(Boolean),
+  }));
+  thinking.push("Removed any prior keyword-spam corruption from summary/bullets.");
 
-  const originalItems = next.skills.flatMap((g) => g.items);
-  const jdItems = uniquePreserve(evidenced.map(displayKeyword)).slice(0, 18);
-  const otherItems = uniquePreserve(
-    originalItems.filter(
-      (item) =>
-        !evidenced.some((k) => normalize(item).includes(k.toLowerCase())),
-    ),
-  ).slice(0, 30);
+  // Skills: keep ORIGINAL skill strings; rank those that overlap JD first
+  const originalGroups = resume.skills.length
+    ? resume.skills
+    : [];
+  const allOriginalItems = originalGroups.flatMap((g) => g.items);
+  const matchingSkills = uniquePreserve(
+    allOriginalItems.filter((item) => overlapScore(item, keywords) > 0),
+  );
+  const otherSkills = uniquePreserve(
+    allOriginalItems.filter((item) => overlapScore(item, keywords) === 0),
+  );
 
-  if (jdItems.length || otherItems.length) {
+  if (matchingSkills.length || otherSkills.length) {
     next.skills = [
-      ...(jdItems.length ? [{ category: "Job-Relevant", items: jdItems }] : []),
-      ...(otherItems.length
-        ? [{ category: "Additional", items: otherItems }]
+      ...(matchingSkills.length
+        ? [{ category: "Core Skills", items: matchingSkills }]
+        : []),
+      ...(otherSkills.length
+        ? [{ category: "Additional Skills", items: otherSkills }]
         : []),
     ];
+    thinking.push(
+      matchingSkills.length
+        ? `Ranked ${matchingSkills.length} existing resume skills that overlap the JD.`
+        : "No direct skill overlaps found; kept original skills unchanged in order.",
+    );
+  } else {
+    thinking.push("No structured skills on source resume; left skills section as-is.");
   }
 
-  const weave = evidenced.slice(0, 8).map(displayKeyword);
-  if (weave.length) {
-    const clause = `Core strengths aligned to this role include ${weave.join(", ")}.`;
-    const base = next.summary.trim();
-    if (!base) {
-      next.summary = clause;
-    } else if (!normalize(base).includes("aligned to this role")) {
-      next.summary = `${base.replace(/\s+$/, "")} ${clause}`.slice(0, 900);
+  // Headline: only if empty — use title hints that appear in resume text
+  if (!next.headline.trim()) {
+    const evidencedTitles = analyzed.titleHints.filter((t) =>
+      sourceNorm.includes(normalize(t)),
+    );
+    if (evidencedTitles.length) {
+      next.headline = evidencedTitles.slice(0, 3).join(" | ");
+      thinking.push(`Filled empty headline from evidenced role phrases: ${next.headline}.`);
     }
   }
 
+  // Summary: do NOT append keyword lists. Only trim corruption.
+  // Optionally move matching skill names already in summary — no mutation beyond cleanup.
+  thinking.push(
+    "Left professional summary factually intact (no keyword stuffing).",
+  );
+
+  // Experience: reorder jobs/bullets by relevance ONLY — never rewrite bullet text
   next.experience = next.experience
-    .map((job) => {
-      const bullets = [...job.bullets].sort(
+    .map((job) => ({
+      ...job,
+      bullets: [...job.bullets].sort(
         (a, b) => overlapScore(b, keywords) - overlapScore(a, keywords),
-      );
-      const jobNorm = normalize(
-        `${job.title} ${job.company} ${bullets.join(" ")}`,
-      );
-      const unused = evidenced
-        .filter((k) => !jobNorm.includes(k.toLowerCase()))
-        .slice(0, 2)
-        .map(displayKeyword);
-      if (unused.length && bullets.length) {
-        bullets[0] =
-          `${bullets[0].replace(/\.$/, "")}, applying ${unused.join(" and ")}.`;
-      }
-      return { ...job, bullets };
-    })
+      ),
+    }))
     .sort(
       (a, b) =>
         overlapScore(
@@ -121,6 +138,9 @@ export function tailorResumeLocally(
           keywords,
         ),
     );
+  thinking.push(
+    "Reordered experience and bullets by JD relevance without changing wording.",
+  );
 
   next.projects = next.projects
     .map((p) => ({
@@ -144,5 +164,20 @@ export function tailorResumeLocally(
     links: [...resume.contact.links],
   };
 
-  return next;
+  const gaps = keywords.filter((k) => !sourceNorm.includes(normalize(k))).slice(0, 8);
+  thinking.push(
+    gaps.length
+      ? `Reported honest gaps (not invented into resume): ${gaps.join(", ")}.`
+      : "Source resume already covers the high-signal JD terms well.",
+  );
+
+  return { resume: next, thinking, analysis: analyzed };
+}
+
+/** @deprecated use tailorResumeSmart */
+export function tailorResumeLocally(
+  resume: StructuredResume,
+  jobDescription: string,
+): StructuredResume {
+  return tailorResumeSmart(resume, jobDescription).resume;
 }

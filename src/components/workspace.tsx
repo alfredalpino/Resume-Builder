@@ -31,52 +31,25 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 export function Workspace({ userName, userEmail }: Props) {
-  const [mode, setMode] = useState<"local" | "gemini">("local");
+  const [useGeminiEnhance, setUseGeminiEnhance] = useState(false);
   const [geminiKey, setGeminiKey] = useState("");
   const [geminiModel, setGeminiModel] = useState<string>(GEMINI_MODELS[0]);
-  const [keyStatus, setKeyStatus] = useState<"idle" | "ok" | "error">("idle");
-  const [keyMessage, setKeyMessage] = useState("");
   const [rawText, setRawText] = useState("");
   const [jobDescription, setJobDescription] = useState("");
   const [resume, setResume] = useState<StructuredResume>(emptyResume());
   const [score, setScore] = useState<AtsScore | null>(null);
-  const [engine, setEngine] = useState<"local" | "gemini" | null>(null);
+  const [thinking, setThinking] = useState<string[]>([]);
+  const [engine, setEngine] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
-  const [showAdvancedAi, setShowAdvancedAi] = useState(false);
 
   const headers = useMemo(() => {
     const h: Record<string, string> = {};
     if (geminiKey.trim()) h[GEMINI_KEY_HEADER] = geminiKey.trim();
     return h;
   }, [geminiKey]);
-
-  async function validateKey() {
-    setBusy("validate");
-    setError(null);
-    setKeyStatus("idle");
-    try {
-      const res = await fetch("/api/validate-key", {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: geminiModel }),
-      });
-      if (!res.ok) throw new Error(await readError(res));
-      const data = (await res.json()) as { model?: string };
-      setKeyStatus("ok");
-      setKeyMessage(
-        `Gemini key works${data.model ? ` (${data.model})` : ""}. Optional — Local ATS needs no key.`,
-      );
-      if (data.model) setGeminiModel(data.model);
-    } catch (err) {
-      setKeyStatus("error");
-      setKeyMessage(err instanceof Error ? err.message : "Validation failed");
-    } finally {
-      setBusy(null);
-    }
-  }
 
   async function onFileChange(file: File | null) {
     if (!file) return;
@@ -86,19 +59,13 @@ export function Workspace({ userName, userEmail }: Props) {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch("/api/parse", {
-        method: "POST",
-        headers,
-        body: form,
-      });
+      const res = await fetch("/api/parse", { method: "POST", headers, body: form });
       if (!res.ok) throw new Error(await readError(res));
-      const data = (await res.json()) as {
-        rawText: string;
-        resume: StructuredResume;
-      };
+      const data = (await res.json()) as { rawText: string; resume: StructuredResume };
       setRawText(data.rawText);
       setResume(data.resume);
       setScore(null);
+      setThinking([]);
       setEngine(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Parse failed");
@@ -124,6 +91,7 @@ export function Workspace({ userName, userEmail }: Props) {
       const data = (await res.json()) as { resume: StructuredResume };
       setResume(data.resume);
       setScore(null);
+      setThinking([]);
       setEngine(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Parse failed");
@@ -137,8 +105,8 @@ export function Workspace({ userName, userEmail }: Props) {
       setError("Paste a job description");
       return;
     }
-    if (mode === "gemini" && !geminiKey.trim()) {
-      setError("Gemini mode needs a key — or switch to Local ATS (recommended)");
+    if (useGeminiEnhance && !geminiKey.trim()) {
+      setError("Turn off Gemini enhance, or paste a Gemini key");
       return;
     }
     setBusy("tailor");
@@ -151,7 +119,7 @@ export function Workspace({ userName, userEmail }: Props) {
         body: JSON.stringify({
           resume,
           jobDescription,
-          mode,
+          mode: useGeminiEnhance ? "gemini" : "smart",
           model: geminiModel,
         }),
       });
@@ -159,12 +127,13 @@ export function Workspace({ userName, userEmail }: Props) {
       const data = (await res.json()) as {
         resume: StructuredResume;
         score: AtsScore;
-        engine?: "local" | "gemini";
+        engine?: string;
         warning?: string;
       };
       setResume(data.resume);
       setScore(data.score);
-      setEngine(data.engine || mode);
+      setThinking(data.score.thinking || []);
+      setEngine(data.engine || "smart");
       if (data.warning) setWarning(data.warning);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Tailoring failed");
@@ -197,10 +166,7 @@ export function Workspace({ userName, userEmail }: Props) {
     field: "fullName" | "email" | "phone" | "location",
     value: string,
   ) {
-    setResume((r) => ({
-      ...r,
-      contact: { ...r.contact, [field]: value },
-    }));
+    setResume((r) => ({ ...r, contact: { ...r.contact, [field]: value } }));
   }
 
   return (
@@ -210,7 +176,7 @@ export function Workspace({ userName, userEmail }: Props) {
           <div>
             <p className="text-lg font-semibold tracking-tight">Resume-Builder</p>
             <p className="text-xs text-stone-500">
-              {userName || userEmail || "user"} · Local ATS by default · no Gemini key required
+              {userName || userEmail || "user"} · Smart Thinking locked on · no keyword spam
             </p>
           </div>
           <SignOutButton />
@@ -218,91 +184,63 @@ export function Workspace({ userName, userEmail }: Props) {
       </header>
 
       <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6">
-        <section className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+        <section className="rounded-xl border border-teal-200 bg-teal-50/60 p-4 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
-                Tailor engine
+              <p className="text-xs font-semibold uppercase tracking-wide text-teal-800">
+                Engine
+              </p>
+              <h2 className="mt-1 text-base font-semibold text-stone-900">
+                Smart Thinking (default — always on)
               </h2>
-              <p className="mt-1 text-sm text-stone-600">
-                Local ATS rewrites from your resume facts and JD keywords — no API quota, no key.
+              <p className="mt-1 max-w-2xl text-sm text-stone-600">
+                Analyzes the JD for real skills/tools/roles, maps them to your resume evidence,
+                reorders content, and never invents facts or stuffs filler words like “not / help / do”.
               </p>
             </div>
-            <div className="inline-flex rounded-lg border border-stone-200 bg-stone-50 p-1">
-              <button
-                type="button"
-                onClick={() => setMode("local")}
-                className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-                  mode === "local"
-                    ? "bg-teal-700 text-white"
-                    : "text-stone-700 hover:bg-white"
-                }`}
-              >
-                Local ATS
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMode("gemini");
-                  setShowAdvancedAi(true);
-                }}
-                className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-                  mode === "gemini"
-                    ? "bg-teal-700 text-white"
-                    : "text-stone-700 hover:bg-white"
-                }`}
-              >
-                Gemini (optional)
-              </button>
-            </div>
+            <span className="rounded-full bg-teal-700 px-3 py-1 text-xs font-semibold text-white">
+              Locked
+            </span>
           </div>
 
-          {(showAdvancedAi || mode === "gemini") && (
-            <div className="mt-4 rounded-lg border border-dashed border-stone-300 bg-stone-50/80 p-3">
-              <p className="text-xs text-stone-500">
-                Optional. Free-tier Gemini often hits quota (429/503). If Gemini fails, we auto-fall back to Local ATS.
-              </p>
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+          <details className="mt-4 rounded-lg border border-stone-200 bg-white/80 p-3">
+            <summary className="cursor-pointer text-sm font-medium text-stone-700">
+              Optional: Gemini enhance (after Smart Thinking)
+            </summary>
+            <div className="mt-3 space-y-2">
+              <label className="flex items-center gap-2 text-sm">
                 <input
-                  type="password"
-                  autoComplete="off"
-                  placeholder="Gemini API key (optional)"
-                  value={geminiKey}
-                  onChange={(e) => {
-                    setGeminiKey(e.target.value);
-                    setKeyStatus("idle");
-                  }}
-                  className="flex-1 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
+                  type="checkbox"
+                  checked={useGeminiEnhance}
+                  onChange={(e) => setUseGeminiEnhance(e.target.checked)}
                 />
-                <select
-                  value={geminiModel}
-                  onChange={(e) => setGeminiModel(e.target.value)}
-                  className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm"
-                >
-                  {GEMINI_MODELS.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  disabled={!!busy || !geminiKey.trim()}
-                  onClick={validateKey}
-                  className="rounded-md bg-stone-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-                >
-                  {busy === "validate" ? "Checking…" : "Validate"}
-                </button>
-              </div>
-              {keyMessage ? (
-                <p
-                  className={`mt-2 text-sm ${keyStatus === "ok" ? "text-teal-700" : "text-red-700"}`}
-                >
-                  {keyMessage}
-                </p>
+                Also run Gemini refine (falls back to Smart Thinking if quota fails)
+              </label>
+              {useGeminiEnhance ? (
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    placeholder="Gemini API key"
+                    value={geminiKey}
+                    onChange={(e) => setGeminiKey(e.target.value)}
+                    className="flex-1 rounded-md border border-stone-300 px-3 py-2 text-sm"
+                  />
+                  <select
+                    value={geminiModel}
+                    onChange={(e) => setGeminiModel(e.target.value)}
+                    className="rounded-md border border-stone-300 px-3 py-2 text-sm"
+                  >
+                    {GEMINI_MODELS.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               ) : null}
             </div>
-          )}
+          </details>
         </section>
 
         <section className="grid gap-4 lg:grid-cols-2">
@@ -327,7 +265,7 @@ export function Workspace({ userName, userEmail }: Props) {
               onChange={(e) => setRawText(e.target.value)}
               placeholder="Or paste resume text here…"
               rows={10}
-              className="mt-3 w-full rounded-md border border-stone-300 px-3 py-2 font-mono text-xs outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
+              className="mt-3 w-full rounded-md border border-stone-300 px-3 py-2 font-mono text-xs outline-none focus:border-teal-600"
             />
             <button
               type="button"
@@ -348,7 +286,7 @@ export function Workspace({ userName, userEmail }: Props) {
               onChange={(e) => setJobDescription(e.target.value)}
               placeholder="Paste the full job description…"
               rows={16}
-              className="mt-3 w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
+              className="mt-3 w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-teal-600"
             />
             <button
               type="button"
@@ -356,13 +294,7 @@ export function Workspace({ userName, userEmail }: Props) {
               onClick={tailor}
               className="mt-3 w-full rounded-md bg-teal-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-50"
             >
-              {busy === "tailor"
-                ? mode === "local"
-                  ? "Tailoring locally…"
-                  : "Tailoring…"
-                : mode === "local"
-                  ? "Tailor resume (Local ATS)"
-                  : "Tailor resume (Gemini)"}
+              {busy === "tailor" ? "Thinking & tailoring…" : "Tailor with Smart Thinking"}
             </button>
           </div>
         </section>
@@ -378,17 +310,28 @@ export function Workspace({ userName, userEmail }: Props) {
           </div>
         ) : null}
 
+        {thinking.length ? (
+          <section className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
+              Thinking
+            </h2>
+            <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-sm text-stone-700">
+              {thinking.map((step, i) => (
+                <li key={`${i}-${step.slice(0, 24)}`}>{step}</li>
+              ))}
+            </ol>
+          </section>
+        ) : null}
+
         {score ? (
           <section className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
                   ATS score
-                  {engine ? (
-                    <span className="ml-2 rounded bg-stone-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-stone-600">
-                      {engine === "local" ? "Local ATS" : "Gemini"}
-                    </span>
-                  ) : null}
+                  <span className="ml-2 rounded bg-teal-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-800">
+                    {engine === "gemini+smart" ? "Smart + Gemini" : "Smart Thinking"}
+                  </span>
                 </h2>
                 <p className="mt-1 text-3xl font-semibold tracking-tight">
                   {score.matchRate}%
@@ -433,12 +376,14 @@ export function Workspace({ userName, userEmail }: Props) {
                       </span>
                     ))
                   ) : (
-                    <span className="text-xs text-stone-500">None yet</span>
+                    <span className="text-xs text-stone-500">No high-signal overlaps yet</span>
                   )}
                 </div>
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase text-amber-800">Gaps</p>
+                <p className="text-xs font-semibold uppercase text-amber-800">
+                  Honest gaps
+                </p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {score.missing.length ? (
                     score.missing.map((h) => (
@@ -485,18 +430,14 @@ export function Workspace({ userName, userEmail }: Props) {
               <input
                 className="rounded-md border border-stone-300 px-3 py-2 text-sm"
                 value={resume.headline}
-                onChange={(e) =>
-                  setResume((r) => ({ ...r, headline: e.target.value }))
-                }
+                onChange={(e) => setResume((r) => ({ ...r, headline: e.target.value }))}
                 placeholder="Headline"
               />
               <textarea
                 className="rounded-md border border-stone-300 px-3 py-2 text-sm"
                 rows={5}
                 value={resume.summary}
-                onChange={(e) =>
-                  setResume((r) => ({ ...r, summary: e.target.value }))
-                }
+                onChange={(e) => setResume((r) => ({ ...r, summary: e.target.value }))}
                 placeholder="Summary"
               />
               <textarea
@@ -538,18 +479,6 @@ export function Workspace({ userName, userEmail }: Props) {
                       .join("  ·  ")}`
                   : ""}
               </p>
-              {resume.contact.links.length ? (
-                <p className="mt-1 text-center text-[9px] text-[#0B57D0]">
-                  {resume.contact.links.map((l, i) => (
-                    <span key={l.url}>
-                      {i > 0 ? " · " : ""}
-                      <a href={l.url} target="_blank" rel="noreferrer">
-                        {l.url}
-                      </a>
-                    </span>
-                  ))}
-                </p>
-              ) : null}
 
               {resume.summary ? (
                 <>
@@ -590,39 +519,6 @@ export function Workspace({ userName, userEmail }: Props) {
                       </p>
                       <ul className="mt-0.5 list-none pl-2">
                         {job.bullets.map((b, i) => (
-                          <li key={i}>• {b}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
-                </>
-              ) : null}
-
-              {resume.projects.length ? (
-                <>
-                  <h3 className="mt-4 border-b border-[#111] pb-0.5 text-[10.5px] font-bold uppercase tracking-wide">
-                    Projects
-                  </h3>
-                  {resume.projects.map((p, idx) => (
-                    <div key={`${p.name}-${idx}`} className="mt-2">
-                      <p className="font-bold">
-                        {p.name}
-                        {p.url ? (
-                          <>
-                            {" · "}
-                            <a
-                              href={p.url}
-                              className="text-[#0B57D0]"
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              {p.url.replace(/^https?:\/\//, "")}
-                            </a>
-                          </>
-                        ) : null}
-                      </p>
-                      <ul className="pl-2">
-                        {p.bullets.map((b, i) => (
                           <li key={i}>• {b}</li>
                         ))}
                       </ul>
