@@ -154,12 +154,16 @@ function ResumeCard({
           <h3 className="mt-3 border-b border-[#111] pb-0.5 font-bold uppercase tracking-wide">
             Education
           </h3>
-          {resume.education.map((e, idx) => (
-            <p key={`${e.school}-${idx}`} className="mt-1">
-              {e.degree} — {e.school}
-              {e.dates ? `  ·  ${e.dates}` : ""}
-            </p>
-          ))}
+          {resume.education.map((e, idx) => {
+            const same = e.degree.trim().toLowerCase() === e.school.trim().toLowerCase();
+            return (
+              <p key={`${e.school}-${idx}`} className="mt-1">
+                {same ? e.degree : `${e.degree} — ${e.school}`}
+                {e.dates ? `  ·  ${e.dates}` : ""}
+                {e.details ? `  ·  ${e.details}` : ""}
+              </p>
+            );
+          })}
         </>
       ) : null}
     </article>

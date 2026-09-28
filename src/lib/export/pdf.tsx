@@ -221,7 +221,11 @@ function ResumeDocument({
             <Text style={styles.section}>Education</Text>
             {resume.education.map((e, idx) => (
               <Text key={`${e.school}-${idx}`} style={styles.body}>
-                {`${e.degree} — ${e.school}${e.dates ? `  ·  ${e.dates}` : ""}${e.details ? `  ·  ${e.details}` : ""}`}
+                {`${
+                  e.degree.trim().toLowerCase() === e.school.trim().toLowerCase()
+                    ? e.degree
+                    : `${e.degree} — ${e.school}`
+                }${e.dates ? `  ·  ${e.dates}` : ""}${e.details ? `  ·  ${e.details}` : ""}`}
               </Text>
             ))}
           </View>

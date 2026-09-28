@@ -49,7 +49,7 @@ const LEX: Record<string, LexRule[]> = {
   support_to_tech: [
     {
       match: /\bhelped customers with complaints and support queries\s+related to\s+([^.]+)/gi,
-      to: "triaged user issues related to $1, clarified requirements, and drove resolution",
+      to: "triaged user issues related to $1; clarified requirements and drove resolution",
     },
     {
       match: /\bhelped customers with complaints and support queries/gi,
@@ -141,17 +141,18 @@ function uniquePreserve(items: string[]): string[] {
 function expandSkillItems(items: string[]): string[] {
   const out: string[] = [];
   for (const item of items) {
-    if (/[|,•·—–]/.test(item) && item.length > 40) {
+    // Only explode on middot/bullet separators — never on commas inside a skill phrase
+    if (/[•·]/.test(item) && item.length > 40) {
       const parts = item
-        .split(/\s*[|,•·—–]\s*/)
+        .split(/\s*[•·]\s*/)
         .map((s) => s.trim())
-        .filter((s) => s.length > 1 && s.length < 80);
+        .filter((s) => s.length > 1 && s.length < 100);
       if (parts.length > 1) {
         out.push(...parts);
         continue;
       }
     }
-    out.push(item.trim());
+    out.push(item.trim().replace(/\s*\/\s*/g, " / "));
   }
   return uniquePreserve(out);
 }
@@ -181,6 +182,26 @@ function applyLex(text: string, rules: LexRule[]): string {
 function capitalize(s: string): string {
   if (!s) return s;
   return s[0].toUpperCase() + s.slice(1);
+}
+
+/** Never mid-word slice — veteran resumes never end on "and fo." */
+function truncateAtWord(text: string, max: number): string {
+  const t = text.replace(/\s{2,}/g, " ").trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max);
+  const sp = cut.lastIndexOf(" ");
+  const base = (sp > max * 0.55 ? cut.slice(0, sp) : cut).trim();
+  return base.replace(/[,:;·|/&-]+$/, "").trim();
+}
+
+function cleanSentence(text: string): string {
+  return text
+    .replace(/\s+,/g, ",")
+    .replace(/,\s*,+/g, ",")
+    .replace(/\band,\s+/gi, "and ")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+\./g, ".")
+    .trim();
 }
 
 function overlapScore(text: string, keywords: string[]): number {
@@ -317,39 +338,51 @@ function buildSummary(
   lex: LexRule[],
 ): string {
   const target = pickBestTitle(analysis.titleHints, analysis.domain);
-  const themeLine = themes.slice(0, 4).join("; ");
+  // Only themes the candidate can honestly claim adjacency to (ops→eng stays ops-flavored)
+  const themeLine = themes
+    .filter((t) => !/user-facing ui|typescript|python|react|next/i.test(t) || evidenced.some((e) => normalize(e) === normalize(t)))
+    .slice(0, 4)
+    .join("; ");
   const stackLine = evidenced.slice(0, 6).join(", ");
 
   if (distance === "hard") {
-    const bg = applyLex(resume.summary || "", lex)
+    const bgRaw = applyLex(resume.summary || "", lex)
       .replace(/eager to grow in[^.]*\./gi, "")
-      .replace(/\bcustomer care associate with\b/gi, "Background:")
+      .replace(/\bcustomer care associate with\b/gi, "")
+      .replace(/\bcustomer-facing operations professional with\b/gi, "")
       .replace(/\s{2,}/g, " ")
-      .slice(0, 220)
       .trim();
-    // Never put "honest gaps" on the resume — gaps belong only in the ATS UI
-    return [
-      `Targeting ${target} roles with a deliberate pivot from customer-facing operations into product engineering.`,
-      bg ? `${capitalize(bg.replace(/\.$/, ""))}.` : "",
-      transferables.length
-        ? `Core transferables: ${transferables.slice(0, 4).join("; ")}.`
-        : "Strengths in clarifying requirements, coordinating with technical teams, and delivering under SLA pressure.",
-      themeLine ? `Aligning experience toward: ${themeLine}.` : "",
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .slice(0, 700);
+    const bg = truncateAtWord(cleanSentence(bgRaw), 240);
+    // Industry pattern: lead with target role + proven ops signal, not "deliberate pivot" coach-speak
+    return cleanSentence(
+      [
+        `${target} candidate with proven user-facing operations experience and a track record of clarifying requirements under SLA pressure.`,
+        bg ? capitalize(bg.replace(/\.$/, "")) + "." : "",
+        transferables.length
+          ? `Strengths: ${transferables.slice(0, 4).join("; ").toLowerCase()}.`
+          : "",
+        themeLine
+          ? `Focusing next on ${/^[A-Z]{2,}/.test(themeLine) ? themeLine : themeLine.replace(/^./, (c) => c.toLowerCase())}.`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    ).slice(0, 700);
   }
 
-  const sourceFacts = applyLex(resume.summary || "", lex)
-    .replace(/eager to grow in[^.]*\./gi, "")
-    .replace(/voice\s*\/\s*non-voice bpo[^.]*\./gi, "")
-    .replace(/^full stack software developer with /i, "")
-    .replace(/^aspiring[^.]*\.\s*/i, "")
-    .replace(/^customer care associate with /i, "Background in ")
-    .replace(/\s{2,}/g, " ")
-    .slice(0, 280)
-    .trim();
+  const sourceFacts = truncateAtWord(
+    cleanSentence(
+      applyLex(resume.summary || "", lex)
+        .replace(/eager to grow in[^.]*\./gi, "")
+        .replace(/voice\s*\/\s*non-voice bpo[^.]*\./gi, "")
+        .replace(/^full stack software developer with /i, "")
+        .replace(/^aspiring[^.]*\.\s*/i, "")
+        .replace(/^customer care associate with /i, "Background in ")
+        .replace(/\s{2,}/g, " ")
+        .trim(),
+    ),
+    280,
+  );
 
   const opener =
     analysis.domain === "ai"
@@ -358,16 +391,16 @@ function buildSummary(
         ? `${target} focused on reliable, multi-channel user operations and SLA-grade delivery.`
         : `${target} who owns features end to end — from vague problem to shipped production.`;
 
-  return [
-    opener,
-    sourceFacts ? capitalize(sourceFacts.replace(/\.$/, "")) + "." : "",
-    stackLine ? `Evidence stack: ${stackLine}.` : "",
-    themeLine ? `Centered on this role's themes: ${themeLine}.` : "",
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .replace(/\s{2,}/g, " ")
-    .slice(0, 700);
+  return cleanSentence(
+    [
+      opener,
+      sourceFacts ? capitalize(sourceFacts.replace(/\.$/, "")) + "." : "",
+      stackLine ? `Evidence stack: ${stackLine}.` : "",
+      themeLine ? `Centered on this role's themes: ${themeLine}.` : "",
+    ]
+      .filter(Boolean)
+      .join(" "),
+  ).slice(0, 700);
 }
 
 function collectTransferables(text: string): string[] {
@@ -378,7 +411,8 @@ function collectTransferables(text: string): string[] {
     { re: /ticket|crm|document|excel|word|data entry|sop/i, label: "Structured documentation & tooling" },
     { re: /ship|production|deploy|vercel|docker/i, label: "Production delivery" },
     { re: /automation|bot|pipeline|agent/i, label: "Automation & tooling" },
-    { re: /ui|ux|frontend|react|next/i, label: "User-facing UI craft" },
+    // Never invent UI craft from JD alone — only if resume already shows UI work
+    { re: /\b(react|next\.?js|frontend|ui\/ux|figma|css|html)\b/i, label: "Frontend / UI" },
   ];
   return uniquePreserve(
     labels.filter((l) => l.re.test(text)).map((l) => l.label),
@@ -387,16 +421,14 @@ function collectTransferables(text: string): string[] {
 
 function rewriteBullet(bullet: string, lex: LexRule[], keywords: string[]): string {
   let b = applyLex(dedupePhrase(bullet), lex);
-  // Light JD-theme boosts when already true
-  if (/ship|deliver|owned|built|engineered/i.test(b) && /production|vercel|vps|deploy/i.test(b)) {
-    // already strong
-  } else if (/end.to.end|own/i.test(keywords.join(" ")) && /shipped|built|owned/i.test(b)) {
+  if (/end.to.end|own/i.test(keywords.join(" ")) && /shipped|built|owned/i.test(b)) {
     b = b.replace(/^(shipped|built)\b/i, "Owned and $1");
   }
-  b = b.replace(/\s{2,}/g, " ").trim();
+  b = cleanSentence(b);
   if (b && /^[a-z]/.test(b)) b = capitalize(b);
-  // Fix double Owned and Owned
   b = b.replace(/^Owned and [Oo]wned\b/, "Owned");
+  // Fix lex artifacts when source bullet was truncated mid-list ("..., and" → ", and, clarified")
+  b = b.replace(/,\s*and,\s*/gi, ", and ").replace(/\sand,\s+clarified/gi, " and clarified");
   return b;
 }
 
@@ -427,10 +459,16 @@ function classifySkill(item: string): string {
   if (/customer|inbound|chat|call|email|complaint|support|handling|triage|user-issue|multi-channel/.test(n)) {
     return "Customer Operations";
   }
-  if (/excel|word|data entry|ms |documentation|computer/.test(n)) {
-    return "Tools";
+  if (/excel|word|ms office|documentation/.test(n)) {
+    return "Applications";
   }
   return "Additional Skills";
+}
+
+function isLowSignalTool(item: string): boolean {
+  return /^(basic computer operations|computer operations|ms office basics|typing)$/i.test(
+    item.trim(),
+  );
 }
 
 function regroupSkills(
@@ -442,19 +480,33 @@ function regroupSkills(
   keywords: string[],
   lex: LexRule[],
 ): StructuredResume["skills"] {
-  const allItems = expandSkillItems(resume.skills.flatMap((g) => g.items)).map(
-    (i) => applyLex(i, lex),
-  );
+  const allItems = expandSkillItems(resume.skills.flatMap((g) => g.items))
+    .map((i) => applyLex(i, lex))
+    .filter((i) => !isLowSignalTool(i));
 
   if (distance === "hard") {
-    const tools = uniquePreserve([
+    // Veteran pattern (FAANG / late-stage startup ATS): one competencies line + real tools.
+    // Never use coach-speak labels like "Transferable Strengths" / "Tools Already Used".
+    const competencies = uniquePreserve([
+      // Prefer concrete reframed skills first; abstract strengths fill remaining slots
+      ...allItems
+        .filter((i) => !/\b(excel|word|ms office|crm|zendesk|freshdesk|jira|git)\b/i.test(i))
+        .slice(0, 8),
+      ...transferables.slice(0, 4),
+    ]).slice(0, 10);
+
+    const applications = uniquePreserve([
       ...evidenced,
-      ...allItems.filter((i) => /excel|word|crm|ticket|ms |git|computer/i.test(i)),
-    ]);
-    // Hard pivot: transferables + tools only — do not dump prior BPO skill list on the resume
+      ...allItems.filter((i) => /\b(excel|word|ms office|crm|zendesk|freshdesk|jira|git)\b/i.test(i)),
+    ])
+      .filter((i) => !isLowSignalTool(i))
+      .slice(0, 8);
+
     return [
-      { category: "Transferable Strengths", items: transferables.slice(0, 8) },
-      { category: "Tools Already Used", items: tools.slice(0, 8) },
+      { category: "Core Competencies", items: competencies },
+      ...(applications.length
+        ? [{ category: "Applications", items: applications }]
+        : []),
     ].filter((g) => g.items.length > 0);
   }
 
@@ -468,7 +520,7 @@ function regroupSkills(
     "DevOps / Delivery",
     "Customer Operations",
     "Quality / Ops",
-    "Tools",
+    "Applications",
     "Additional Skills",
   ];
   for (const item of allItems) {
@@ -701,7 +753,7 @@ function applyMedium(
   if (evidenced.length) {
     summary = `${summary} Evidence stack: ${evidenced.slice(0, 5).join(", ")}.`;
   }
-  next.summary = summary.slice(0, 700);
+  next.summary = truncateAtWord(cleanSentence(summary), 700);
 
   next.skills = regroupSkills(
     next,
@@ -821,7 +873,7 @@ function applyHard(
 
   thinking.push(
     distance === "hard"
-      ? "Hard: full career pivot framing (transferables; gaps only in ATS UI — not on resume)."
+      ? "Hard: vision pivot with Core Competencies / Applications taxonomy (no coach-speak labels; gaps only in ATS UI)."
       : distance === "adjacent"
         ? "Hard intensity on adjacent domains: aggressive retargeting of headline/summary/skills/bullets."
         : "Hard intensity on same domain: full vision-centering rewrite toward JD.",

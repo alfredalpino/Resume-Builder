@@ -102,6 +102,212 @@ function uniqueLines(lines: string[]): string[] {
   return out;
 }
 
+/** PDF extract often wraps mid-phrase. Rejoin orphans before sectioning. */
+function stitchWrappedLines(lines: string[]): string[] {
+  const out: string[] = [];
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    const prev = out[out.length - 1];
+    if (!prev || isSectionHeader(line)) {
+      out.push(line);
+      continue;
+    }
+    const prevEndsOpen =
+      /[/\\,;:&—–-]$/.test(prev.trim()) ||
+      /\b(and|or|with|the|to|of|for|from|a|an)$/i.test(prev.trim());
+    const lineContinues =
+      /^[a-z&]/.test(line) ||
+      /^(and|or|with|other|related|technical|teams)\b/i.test(line);
+    const prevIsBullet = /^[-•*]/.test(prev);
+    const lineIsBullet = /^[-•*]/.test(line);
+    const prevIsHeader = Boolean(isSectionHeader(prev)) || looksLikeJobHeader(prev);
+
+    if (
+      !prevIsHeader &&
+      !lineIsBullet &&
+      (prevEndsOpen || (lineContinues && !looksLikeJobHeader(line) && !isLocationLine(line) && !isDateOnlyLine(line)))
+    ) {
+      const join =
+        prevEndsOpen && /[/\\]$/.test(prev.trim())
+          ? /\/\s*$/.test(prev)
+            ? " "
+            : " "
+          : " ";
+      out[out.length - 1] = `${prev}${join}${lineIsBullet ? line.replace(/^[-•*]\s*/, "") : line}`
+        .replace(/\s*\/\s*/g, " / ")
+        .replace(/\s{2,}/g, " ");
+      continue;
+    }
+
+    // Bullet body wrapped onto next line without a bullet marker
+    if (prevIsBullet && !lineIsBullet && !looksLikeJobHeader(line) && !isLocationLine(line) && !isDateOnlyLine(line) && lineContinues) {
+      out[out.length - 1] = `${prev} ${line}`.replace(/\s{2,}/g, " ");
+      continue;
+    }
+
+    out.push(line);
+  }
+  return out;
+}
+
+function mergeSkillGroups(
+  groups: { category: string; items: string[] }[],
+): { category: string; items: string[] }[] {
+  const order: string[] = [];
+  const map = new Map<string, string[]>();
+  for (const g of groups) {
+    const cat = g.category.trim() || "Skills";
+    if (!map.has(cat)) {
+      map.set(cat, []);
+      order.push(cat);
+    }
+    map.get(cat)!.push(...g.items);
+  }
+  return order
+    .map((category) => {
+      const seen = new Set<string>();
+      const items: string[] = [];
+      for (const item of map.get(category) || []) {
+        const cleaned = item.replace(/^&\s*/, "").trim();
+        if (!cleaned || cleaned.length < 2) continue;
+        // Stitch fragments that were split on "/"
+        const k = normKey(cleaned);
+        if (seen.has(k)) continue;
+        // Merge dangling previous fragment: "Coordination with field /" + "technical teams"
+        const last = items[items.length - 1];
+        if (last && (/[/\\]$/.test(last) || /^[a-z]/.test(cleaned))) {
+          if (/[/\\]$/.test(last) || /^(technical|teams|documentation)\b/i.test(cleaned)) {
+            items[items.length - 1] = `${last.replace(/\s*\/\s*$/, " / ")}${cleaned}`.replace(
+              /\s*\/\s*/g,
+              " / ",
+            ).replace(/\s{2,}/g, " ");
+            seen.add(normKey(items[items.length - 1]));
+            continue;
+          }
+        }
+        seen.add(k);
+        items.push(cleaned);
+      }
+      // Second pass: join items ending with "/" to next
+      const stitched: string[] = [];
+      for (const item of items) {
+        const prev = stitched[stitched.length - 1];
+        if (prev && /[/\\]\s*$/.test(prev)) {
+          stitched[stitched.length - 1] = `${prev.replace(/\s*$/, "")} ${item}`.replace(
+            /\s*\/\s+/g,
+            " / ",
+          );
+          continue;
+        }
+        if (prev && /^(&|and)\b/i.test(item)) {
+          stitched[stitched.length - 1] = `${prev} ${item}`.replace(/\s{2,}/g, " ");
+          continue;
+        }
+        stitched.push(item);
+      }
+      return { category, items: stitched };
+    })
+    .filter((g) => g.items.length > 0);
+}
+
+function parseEducationEntry(line: string): {
+  school: string;
+  degree: string;
+  dates: string;
+  details?: string;
+} {
+  // Preserve structural separators; do not run dedupeText first (it collapses — and | into ·)
+  const clean = line.replace(/^[-•*]\s*/, "").replace(/\s{2,}/g, " ").trim();
+
+  // "Senior Secondary (Class 12) — NIOS Board | 2025 | 94%"
+  const em = clean.split(/\s+[—–]\s+/).map((s) => s.trim()).filter(Boolean);
+  let left = clean;
+  let right = "";
+  if (em.length >= 2) {
+    left = em[0];
+    right = em.slice(1).join(" — ");
+  }
+
+  const pipeBits = (right || left)
+    .split(/\s*\|\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (em.length >= 2) {
+    const schoolBits = pipeBits;
+    const school = schoolBits[0] || right;
+    const yearish = schoolBits.find((b) => /^\d{4}$/.test(b) || /\d{4}\s*[–—-]/.test(b)) || "";
+    const grade = schoolBits.find((b) => b !== school && b !== yearish && /%|gpa|cgpa|grade/i.test(b));
+    const extra = schoolBits
+      .filter((b) => b !== school && b !== yearish && b !== grade)
+      .join(" · ");
+    return {
+      degree: left,
+      school,
+      dates: yearish,
+      details: [grade, extra].filter(Boolean).join(" · ") || undefined,
+    };
+  }
+
+  // Fallback: "Degree, School, 2020" or middot-separated (already collapsed)
+  const bits = clean.split(/\s*[·|,]\s*/).map((s) => s.trim()).filter(Boolean);
+  const yearish =
+    bits.find((b) => /^\d{4}$/.test(b) || /\d{4}\s*[–—-]/.test(b)) ||
+    bits.find((b) => /\d{4}/.test(b) && b.length <= 20) ||
+    "";
+  const grade = bits.find((b) => /%|gpa|cgpa/i.test(b) && b !== yearish);
+  const rest = bits.filter((b) => b !== yearish && b !== grade);
+  const degree = rest[0] || clean;
+  const school = rest[1] || rest[0] || clean;
+  // Never duplicate the same blob into all three fields
+  return {
+    degree,
+    school: school === degree && rest.length < 2 ? "" : school,
+    dates: yearish,
+    details: grade || undefined,
+  };
+}
+
+function finalizeEducation(
+  entries: { school: string; degree: string; dates: string; details?: string }[],
+): StructuredResume["education"] {
+  const seen = new Set<string>();
+  const out: StructuredResume["education"] = [];
+  for (const e of entries) {
+    let degree = e.degree.trim();
+    let school = (e.school || "").trim();
+    let dates = (e.dates || "").trim();
+    const details = e.details?.trim();
+
+    // Collapse accidental clones (same string in every field)
+    if (school && normKey(school) === normKey(degree) && !dates) {
+      const recovered = parseEducationEntry(degree);
+      degree = recovered.degree;
+      school = recovered.school;
+      dates = recovered.dates;
+    } else if (school && normKey(school) === normKey(degree)) {
+      school = "";
+    }
+    if (dates && (normKey(dates) === normKey(degree) || normKey(dates) === normKey(school))) {
+      const year = dates.match(/\b(19|20)\d{2}\b/);
+      dates = year ? year[0] : "";
+    }
+    if (!school) school = degree;
+
+    const k = normKey(`${degree}|${school}|${dates}|${details || ""}`);
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    out.push({
+      school: school || degree,
+      degree,
+      dates,
+      details: details || undefined,
+    });
+  }
+  return out;
+}
+
 const SECTION_ALIASES: Record<string, string> = {
   summary: "summary",
   "professional summary": "summary",
@@ -189,11 +395,11 @@ function isDateOnlyLine(line: string): boolean {
 }
 
 function splitSkillItems(raw: string): string[] {
-  // Do NOT split on "/" — phrases like "call / chat / email" and "field / technical" are one skill
+  // Do NOT split on "/" or "," — phrases like "call / chat / email", "SLA, CSAT & QA" are one skill
   return raw
-    .split(/\s*[|,•·—–]\s*/)
+    .split(/\s*[|•·—–]\s*/)
     .map((s) => s.trim())
-    .filter((s) => s.length > 1 && s.length < 100)
+    .filter((s) => s.length > 1 && s.length < 120)
     .filter((s) => !/^(and|or|with|the)$/i.test(s));
 }
 
@@ -356,15 +562,16 @@ function parseProjects(lines: string[]): StructuredResume["projects"] {
 function heuristicDraft(rawText: string, links: ResumeLink[]): StructuredResume {
   const draft = emptyResume();
   let text = rawText.replace(/\r/g, "");
-  text = text.replace(/\bCORE SKILLS\b[:\s]*/i, "\nCORE SKILLS\n");
+  // Force known skill-adjacent headers onto their own lines (PDF often glues them)
+  text = text
+    .replace(/\b(CORE SKILLS|CORE COMPETENCIES|KEY STRENGTHS|TECHNICAL SKILLS)\b[:\s]*/gi, "\n$1\n")
+    .replace(/\b(WORK EXPERIENCE|PROFESSIONAL EXPERIENCE|PROFESSIONAL SUMMARY|EDUCATION)\b[:\s]*/gi, "\n$1\n");
 
-  const lines = uniqueLines(
-    text
-      .split(/\n/)
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .map(dedupeText),
-  );
+  const rawLines = text
+    .split(/\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const lines = uniqueLines(stitchWrappedLines(rawLines));
 
   draft.contact.fullName = dedupeText(lines[0] || "Your Name").slice(0, 80);
   const email = rawText.match(EMAIL_RE)?.[0];
@@ -415,6 +622,15 @@ function heuristicDraft(rawText: string, links: ResumeLink[]): StructuredResume 
     const section = isSectionHeader(line);
     if (section) {
       current = section;
+      if (section === "skills") {
+        const h = line.replace(/[:|]+$/g, "").trim();
+        const label = /competenc/i.test(h)
+          ? "Core Competencies"
+          : /technical/i.test(h)
+            ? "Technical Skills"
+            : "Core Skills";
+        buckets.skills.push(`__SKILL_CAT__:${label}`);
+      }
       continue;
     }
     if (current === "ignore") continue;
@@ -445,7 +661,38 @@ function heuristicDraft(rawText: string, links: ResumeLink[]): StructuredResume 
   }
 
   if (buckets.skills.length) {
-    draft.skills = buckets.skills.map(parseSkillLine).filter((g) => g.items.length);
+    const skillGroups: { category: string; items: string[] }[] = [];
+    let skillCategory = "Core Skills";
+    for (const line of buckets.skills) {
+      const catMark = line.match(/^__SKILL_CAT__:(.+)$/);
+      if (catMark) {
+        skillCategory = catMark[1].trim() || "Core Skills";
+        continue;
+      }
+      const headerish = line.replace(/[:|]+$/g, "").trim();
+      if (/^core competencies$/i.test(headerish)) {
+        skillCategory = "Core Competencies";
+        continue;
+      }
+      if (/^core skills$|^technical skills$|^skills$/i.test(headerish)) {
+        skillCategory = /technical/i.test(headerish) ? "Technical Skills" : "Core Skills";
+        continue;
+      }
+      const bulletish = line.replace(/^[-•*]\s*/, "").trim();
+      if (/•/.test(bulletish) && !/[:：]/.test(bulletish)) {
+        skillGroups.push({
+          category: skillCategory,
+          items: splitSkillItems(bulletish),
+        });
+        continue;
+      }
+      const parsed = parseSkillLine(bulletish);
+      skillGroups.push({
+        category: parsed.category === "Skills" ? skillCategory : parsed.category,
+        items: parsed.items,
+      });
+    }
+    draft.skills = mergeSkillGroups(skillGroups.filter((g) => g.items.length));
   }
 
   if (buckets.certifications.length) {
@@ -454,31 +701,7 @@ function heuristicDraft(rawText: string, links: ResumeLink[]): StructuredResume 
 
   if (buckets.education.length) {
     const eduLines = buckets.education.filter((l) => !/^[-•*]/.test(l));
-    draft.education = eduLines.map((line) => {
-      const clean = dedupeText(line.replace(/^[-•*]\s*/, ""));
-      const pipe = clean.split(/\s*\|\s*/).map((s) => s.trim()).filter(Boolean);
-      const main = pipe[0] || clean;
-      const dates =
-        pipe.find((b) => /\d{4}/.test(b) && /present|\d{4}\s*[–—-]/i.test(b)) ||
-        pipe.find((b) => /\d{4}/.test(b)) ||
-        "";
-      const details =
-        pipe.filter((b) => b !== main && b !== dates).join(" · ") || undefined;
-      const bits = main.split(/\s+[—–]\s+/).map((s) => s.trim()).filter(Boolean);
-      return {
-        school: bits[1] || bits[0] || main,
-        degree: bits[0] || main,
-        dates,
-        details,
-      };
-    });
-    const seen = new Set<string>();
-    draft.education = draft.education.filter((e) => {
-      const k = normKey(`${e.degree}|${e.school}|${e.dates}`);
-      if (seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    });
+    draft.education = finalizeEducation(eduLines.map(parseEducationEntry));
   }
 
   if (buckets.experience.length) {
@@ -533,6 +756,16 @@ function heuristicDraft(rawText: string, links: ResumeLink[]): StructuredResume 
         continue;
       }
       if (!looksLikeJobHeader(line)) {
+        // Orphan wrap fragment after a bullet (stitch should catch most; this is backup)
+        if (
+          currentJob &&
+          currentJob.bullets.length &&
+          (/^[a-z]/.test(line) ||
+            /\b(and|or|other|related|devices|systems|equipment)\b/i.test(line))
+        ) {
+          const last = currentJob.bullets.length - 1;
+          currentJob.bullets[last] = `${currentJob.bullets[last]} ${line}`.replace(/\s{2,}/g, " ");
+        }
         continue;
       }
       pushJob();

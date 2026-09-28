@@ -234,7 +234,11 @@ export async function buildDocxBuffer(
     for (const edu of resume.education) {
       children.push(
         body(
-          `${edu.degree} — ${edu.school}${edu.dates ? `  ·  ${edu.dates}` : ""}${edu.details ? `  ·  ${edu.details}` : ""}`,
+          `${
+            edu.degree.trim().toLowerCase() === edu.school.trim().toLowerCase()
+              ? edu.degree
+              : `${edu.degree} — ${edu.school}`
+          }${edu.dates ? `  ·  ${edu.dates}` : ""}${edu.details ? `  ·  ${edu.details}` : ""}`,
         ),
       );
     }
