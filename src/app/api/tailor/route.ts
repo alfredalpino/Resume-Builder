@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { apiError, requireSession } from "@/lib/api";
 import { analyzeJobDescription, scoreResume } from "@/lib/ats-score";
-import { tailorResumeSmart } from "@/lib/local-tailor";
+import { tailorResumeSmart, type TailorIntensity } from "@/lib/local-tailor";
 import { StructuredResumeSchema } from "@/lib/schema";
 
 export const runtime = "nodejs";
+
+const INTENSITIES = new Set<TailorIntensity>(["subtle", "medium", "hard"]);
 
 export async function POST(req: Request) {
   const { error } = await requireSession();
@@ -18,12 +20,16 @@ export async function POST(req: Request) {
       return apiError("Job description looks too short");
     }
 
+    const rawIntensity = String(body.intensity || "medium").toLowerCase();
+    const intensity: TailorIntensity = INTENSITIES.has(rawIntensity as TailorIntensity)
+      ? (rawIntensity as TailorIntensity)
+      : "medium";
+
     const source = StructuredResumeSchema.parse(body.resume);
     const analysis = analyzeJobDescription(jobDescription);
-    const smart = tailorResumeSmart(source, jobDescription, analysis);
+    const smart = tailorResumeSmart(source, jobDescription, analysis, intensity);
     const tailored = smart.resume;
 
-    // Preserve links
     const urls = new Set(tailored.contact.links.map((l) => l.url));
     for (const link of source.contact.links) {
       if (!urls.has(link.url)) tailored.contact.links.push(link);
@@ -38,6 +44,7 @@ export async function POST(req: Request) {
         thinking: [...smart.thinking, ...(score.thinking || [])],
       },
       engine: "smart",
+      intensity,
       analysis: {
         titleHints: analysis.titleHints,
         mustHave: analysis.mustHave,

@@ -19,6 +19,27 @@ import {
 
 export type PivotDistance = "same" | "adjacent" | "hard";
 
+/** User-selected rewrite strength (independent of auto-detected pivot distance). */
+export type TailorIntensity = "subtle" | "medium" | "hard";
+
+export const TAILOR_INTENSITY_META: Record<
+  TailorIntensity,
+  { label: string; blurb: string }
+> = {
+  subtle: {
+    label: "Subtle",
+    blurb: "Keyword promotion & reordering only. Keeps your wording almost intact.",
+  },
+  medium: {
+    label: "Medium",
+    blurb: "Mild line changes: soft headline/summary tweaks and light bullet reframes.",
+  },
+  hard: {
+    label: "Hard",
+    blurb: "Full vision pivot — e.g. BPO → software/AI engineer framing (still no invented tech).",
+  },
+};
+
 type LexRule = { match: RegExp; to: string };
 
 /** Honest phrase swaps that recenter language without inventing facts. */
@@ -507,13 +528,22 @@ function rewriteProjects(
 }
 
 /**
- * Main centering entry — always produces a visibly re-centered resume.
+ * Main centering entry.
+ * `intensity` controls how aggressive the rewrite is (user choice).
+ * Auto-detected `distance` still informs hard-mode framing.
  */
 export function centerResumeForJd(
   resume: StructuredResume,
   jobDescription: string,
   analysis?: JdAnalysis,
-): { resume: StructuredResume; thinking: string[]; analysis: JdAnalysis; distance: PivotDistance } {
+  intensity: TailorIntensity = "medium",
+): {
+  resume: StructuredResume;
+  thinking: string[];
+  analysis: JdAnalysis;
+  distance: PivotDistance;
+  intensity: TailorIntensity;
+} {
   const analyzed = analysis ?? analyzeJobDescription(jobDescription);
   const thinking = [...analyzed.thinking];
   const sourceText = resumeToPlainText(resume);
@@ -526,15 +556,41 @@ export function centerResumeForJd(
   const transferables = collectTransferables(sourceText);
   const keywords = analyzed.keywords;
 
+  thinking.push(`Intensity: ${intensity} (${TAILOR_INTENSITY_META[intensity].label}).`);
   thinking.push(`Resume domain: ${resumeDomain}. JD domain: ${analyzed.domain}.`);
-  thinking.push(`Pivot distance: ${distance} — applying vision-centering rewrite (not keyword sort only).`);
-  thinking.push(`JD themes centered: ${themes.slice(0, 6).join("; ") || "(general)"}.`);
-  if (evidenced.length) thinking.push(`Evidenced stack kept: ${evidenced.slice(0, 8).join(", ")}.`);
+  thinking.push(`Auto pivot distance: ${distance}.`);
+  thinking.push(`JD themes: ${themes.slice(0, 6).join("; ") || "(general)"}.`);
+  if (evidenced.length) thinking.push(`Evidenced stack: ${evidenced.slice(0, 8).join(", ")}.`);
   if (missing.length) thinking.push(`Honest gaps (not invented): ${missing.slice(0, 8).join(", ")}.`);
 
-  const next: StructuredResume = structuredClone(resume);
+  const next = cleanContact(structuredClone(resume));
 
-  next.contact = {
+  if (intensity === "subtle") {
+    applySubtle(next, analyzed, keywords, evidenced, themes, thinking);
+    return { resume: next, thinking, analysis: analyzed, distance, intensity };
+  }
+
+  if (intensity === "medium") {
+    // Cap framing: never force hard-pivot "Aspiring SWE" on medium
+    const framing: PivotDistance = distance === "hard" ? "adjacent" : distance;
+    const mildLex = lex.filter(
+      (r) =>
+        !/complaint|patients?|healthcare|hospital|clinic|medical/i.test(r.match.source) ||
+        /helped customers|coordinat|voice|inbound|customer handling|customer care/i.test(
+          r.match.source,
+        ),
+    );
+    applyMedium(next, analyzed, framing, themes, evidenced, missing, transferables, mildLex, keywords, resumeDomain, thinking);
+    return { resume: next, thinking, analysis: analyzed, distance, intensity };
+  }
+
+  // hard — full vision pivot
+  applyHard(next, analyzed, distance, themes, evidenced, missing, transferables, lex, keywords, resumeDomain, thinking);
+  return { resume: next, thinking, analysis: analyzed, distance, intensity };
+}
+
+function cleanContact(resume: StructuredResume): StructuredResume {
+  resume.contact = {
     ...resume.contact,
     fullName: dedupePhrase(resume.contact.fullName),
     email: resume.contact.email.trim(),
@@ -549,7 +605,189 @@ export function centerResumeForJd(
       : resume.contact.location,
     links: [...resume.contact.links],
   };
+  if (resume.extras?.length) {
+    resume.extras = resume.extras.filter(
+      (e) => !/age:|nationality:|personal details|target roles|key strengths/i.test(e),
+    );
+    if (!resume.extras.length) delete resume.extras;
+  }
+  return resume;
+}
 
+function sortByKeywords<T>(items: T[], textOf: (item: T) => string, keywords: string[]): T[] {
+  return [...items].sort(
+    (a, b) => overlapScore(textOf(b), keywords) - overlapScore(textOf(a), keywords),
+  );
+}
+
+/** Subtle: promote evidenced keywords + reorder. Keep original wording. */
+function applySubtle(
+  next: StructuredResume,
+  analyzed: JdAnalysis,
+  keywords: string[],
+  evidenced: string[],
+  themes: string[],
+  thinking: string[],
+) {
+  const existing = new Set(
+    expandSkillItems(next.skills.flatMap((g) => g.items)).map((i) => normalize(i)),
+  );
+  const toPromote = evidenced.filter((t) => !existing.has(normalize(t)));
+
+  if (toPromote.length) {
+    const core = next.skills[0] || { category: "Core Skills", items: [] };
+    core.items = uniquePreserve([...toPromote, ...core.items]);
+    if (!next.skills.length) next.skills = [core];
+    else next.skills[0] = core;
+    thinking.push(`Subtle: promoted evidenced JD keywords into skills: ${toPromote.slice(0, 6).join(", ")}.`);
+  } else {
+    thinking.push("Subtle: no new evidenced keywords to promote — reordering only.");
+  }
+
+  next.skills = next.skills.map((g) => ({
+    ...g,
+    items: [...g.items].sort((a, b) => overlapScore(b, keywords) - overlapScore(a, keywords)),
+  }));
+
+  // Light headline fill if empty
+  if (!next.headline.trim() && analyzed.titleHints.length) {
+    const hint = analyzed.titleHints[0];
+    if (evidenced.length || overlapScore(resumeToPlainText(next), [hint]) > 0) {
+      next.headline = uniquePreserve([hint, ...evidenced.slice(0, 3)]).join(" | ");
+      thinking.push(`Subtle: filled empty headline from JD title + evidenced stack.`);
+    }
+  }
+
+  // Optional one-line theme nudge at end of summary (not a rewrite)
+  if (themes.length && next.summary && !normalize(next.summary).includes(normalize(themes[0]))) {
+    const nudge = `Keywords emphasized for this role: ${evidenced.slice(0, 4).join(", ") || themes.slice(0, 3).join(", ")}.`;
+    if (evidenced.length && next.summary.length < 650) {
+      next.summary = `${next.summary.replace(/\s+$/, "")} ${nudge}`.slice(0, 780);
+      thinking.push("Subtle: appended evidenced keyword emphasis line to summary.");
+    }
+  }
+
+  next.experience = sortByKeywords(
+    next.experience.map((job) => ({
+      ...job,
+      bullets: [...job.bullets].sort(
+        (a, b) => overlapScore(b, keywords) - overlapScore(a, keywords),
+      ),
+    })),
+    (j) => `${j.title} ${j.company} ${j.bullets.join(" ")}`,
+    keywords,
+  );
+
+  next.projects = sortByKeywords(
+    next.projects,
+    (p) => `${p.name} ${p.bullets.join(" ")}`,
+    keywords,
+  );
+
+  thinking.push("Subtle complete: wording preserved; skills/experience reordered for ATS overlap.");
+}
+
+/** Medium: mild reframes, no hard-pivot transferables swap. */
+function applyMedium(
+  next: StructuredResume,
+  analyzed: JdAnalysis,
+  framing: PivotDistance,
+  themes: string[],
+  evidenced: string[],
+  missing: string[],
+  transferables: string[],
+  lex: LexRule[],
+  keywords: string[],
+  resumeDomain: ResumeDomain,
+  thinking: string[],
+) {
+  // Soft headline — never "Aspiring …" on medium
+  const target = analyzed.titleHints[0] || (analyzed.domain === "ai" ? "Software Engineer" : "");
+  if (target || evidenced.length) {
+    next.headline = uniquePreserve([
+      next.headline && !/aspiring/i.test(next.headline) ? next.headline.split("|")[0].trim() : target,
+      ...evidenced.slice(0, 4),
+    ])
+      .filter(Boolean)
+      .slice(0, 5)
+      .join(" | ");
+  }
+
+  // Mild summary: keep identity, strip BPO aspiration, add theme line
+  let summary = applyLex(next.summary || "", lex)
+    .replace(/eager to grow in[^.]*\./gi, "")
+    .replace(/voice\s*\/\s*non-voice bpo[^.]*\./gi, "")
+    .trim();
+  if (themes.length) {
+    summary = `${summary} Centered toward: ${themes.slice(0, 3).join("; ")}.`.replace(/\s{2,}/g, " ");
+  }
+  if (evidenced.length) {
+    summary = `${summary} Evidence stack: ${evidenced.slice(0, 5).join(", ")}.`;
+  }
+  next.summary = summary.slice(0, 780);
+
+  // Skills: regroup but never hard-pivot transferables layout
+  next.skills = regroupSkills(
+    next,
+    analyzed,
+    framing === "hard" ? "adjacent" : framing,
+    evidenced,
+    transferables,
+    keywords,
+    lex,
+  );
+
+  next.experience = sortByKeywords(
+    next.experience.map((job) => {
+      const loc = job.location ? dedupePhrase(job.location) : job.location;
+      const covered =
+        loc &&
+        next.contact.location &&
+        normalize(next.contact.location).includes(normalize(loc));
+      return {
+        ...job,
+        company: dedupePhrase(job.company),
+        title: dedupePhrase(job.title),
+        location: covered ? undefined : loc,
+        bullets: uniquePreserve(
+          job.bullets.map((b) => rewriteBullet(b, lex, keywords)),
+        ).filter(Boolean),
+      };
+    }),
+    (j) => `${j.title} ${j.company} ${j.bullets.join(" ")}`,
+    keywords,
+  );
+
+  next.projects = rewriteProjects(next, lex, keywords);
+  next.education = next.education.map((e) => ({
+    ...e,
+    school: dedupePhrase(e.school),
+    degree: dedupePhrase(e.degree),
+    details: e.details ? dedupePhrase(e.details) : e.details,
+  }));
+
+  thinking.push(
+    framing === "adjacent" && resumeDomain === "support"
+      ? "Medium: mild ops→tech language reframes; kept original career identity (no hard pivot)."
+      : "Medium: mild headline/summary/bullet updates + JD-ranked skills.",
+  );
+  if (missing.length) thinking.push(`Gaps left honest: ${missing.slice(0, 6).join(", ")}.`);
+}
+
+/** Hard: full vision pivot including BPO→SWE transferables framing. */
+function applyHard(
+  next: StructuredResume,
+  analyzed: JdAnalysis,
+  distance: PivotDistance,
+  themes: string[],
+  evidenced: string[],
+  missing: string[],
+  transferables: string[],
+  lex: LexRule[],
+  keywords: string[],
+  resumeDomain: ResumeDomain,
+  thinking: string[],
+) {
   next.headline = buildHeadline(next, analyzed, distance, evidenced);
   next.summary = buildSummary(
     next,
@@ -571,8 +809,8 @@ export function centerResumeForJd(
     lex,
   );
 
-  next.experience = next.experience
-    .map((job) => {
+  next.experience = sortByKeywords(
+    next.experience.map((job) => {
       const loc = job.location ? dedupePhrase(job.location) : job.location;
       const covered =
         loc &&
@@ -591,15 +829,12 @@ export function centerResumeForJd(
           job.bullets.map((b) => rewriteBullet(b, lex, keywords)),
         ).filter(Boolean),
       };
-    })
-    .sort(
-      (a, b) =>
-        overlapScore(`${b.title} ${b.company} ${b.bullets.join(" ")}`, keywords) -
-        overlapScore(`${a.title} ${a.company} ${a.bullets.join(" ")}`, keywords),
-    );
+    }),
+    (j) => `${j.title} ${j.company} ${j.bullets.join(" ")}`,
+    keywords,
+  );
 
   next.projects = rewriteProjects(next, lex, keywords);
-
   next.education = next.education.map((e) => ({
     ...e,
     school: dedupePhrase(e.school),
@@ -607,20 +842,11 @@ export function centerResumeForJd(
     details: e.details ? dedupePhrase(e.details) : e.details,
   }));
 
-  if (next.extras?.length) {
-    next.extras = next.extras.filter(
-      (e) => !/age:|nationality:|personal details|target roles|key strengths/i.test(e),
-    );
-    if (!next.extras.length) delete next.extras;
-  }
-
   thinking.push(
     distance === "hard"
-      ? "Hard pivot: transition headline/summary + transferables; job employers/titles stay factual."
+      ? "Hard: full career pivot framing (transferables + honest gaps; no invented stack)."
       : distance === "adjacent"
-        ? "Adjacent pivot: retargeted headline/summary/skills/bullets toward JD vocabulary."
-        : "Same-domain centering: rewritten headline/summary, JD-ranked skills, theme-aligned bullets.",
+        ? "Hard intensity on adjacent domains: aggressive retargeting of headline/summary/skills/bullets."
+        : "Hard intensity on same domain: full vision-centering rewrite toward JD.",
   );
-
-  return { resume: next, thinking, analysis: analyzed, distance };
 }
