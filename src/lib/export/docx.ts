@@ -9,12 +9,16 @@ import {
 } from "docx";
 import type { StructuredResume } from "@/lib/schema";
 
+const FONT = "Calibri";
+const BODY = 20; // 10pt
+const SMALL = 18; // 9pt
+
 function hr() {
   return {
     bottom: {
       style: BorderStyle.SINGLE,
-      size: 6,
-      color: "000000",
+      size: 12,
+      color: "111111",
       space: 1,
     },
   };
@@ -22,28 +26,30 @@ function hr() {
 
 function sectionTitle(text: string) {
   return new Paragraph({
-    spacing: { before: 160, after: 60 },
+    spacing: { before: 200, after: 80 },
     border: hr(),
     children: [
       new TextRun({
         text: text.toUpperCase(),
         bold: true,
-        size: 22,
-        font: "Calibri",
+        size: 21,
+        font: FONT,
+        color: "111111",
       }),
     ],
   });
 }
 
-function body(text: string, opts?: { bold?: boolean; before?: number }) {
+function body(text: string, opts?: { bold?: boolean; before?: number; size?: number }) {
   return new Paragraph({
-    spacing: { before: opts?.before ?? 0, after: 40, line: 276 },
+    spacing: { before: opts?.before ?? 0, after: 48, line: 276 },
     children: [
       new TextRun({
         text,
         bold: opts?.bold,
-        size: 20,
-        font: "Calibri",
+        size: opts?.size ?? BODY,
+        font: FONT,
+        color: "111111",
       }),
     ],
   });
@@ -51,13 +57,14 @@ function body(text: string, opts?: { bold?: boolean; before?: number }) {
 
 function bullet(text: string) {
   return new Paragraph({
-    spacing: { before: 0, after: 20, line: 276 },
-    indent: { left: 120 },
+    spacing: { before: 0, after: 28, line: 276 },
+    indent: { left: 180 },
     children: [
       new TextRun({
-        text: `- ${text}`,
-        size: 20,
-        font: "Calibri",
+        text: `• ${text}`,
+        size: BODY,
+        font: FONT,
+        color: "111111",
       }),
     ],
   });
@@ -72,13 +79,13 @@ function contactParagraph(resume: StructuredResume) {
 
   if (parts.length) {
     children.push(
-      new TextRun({ text: parts.join(" | "), size: 20, font: "Calibri" }),
+      new TextRun({ text: parts.join("  ·  "), size: SMALL, font: FONT }),
     );
   }
 
   resume.contact.links.forEach((link, i) => {
     if (children.length || i > 0) {
-      children.push(new TextRun({ text: " | ", size: 20, font: "Calibri" }));
+      children.push(new TextRun({ text: "  ·  ", size: SMALL, font: FONT }));
     }
     children.push(
       new ExternalHyperlink({
@@ -86,9 +93,9 @@ function contactParagraph(resume: StructuredResume) {
           new TextRun({
             text: link.label,
             style: "Hyperlink",
-            size: 20,
-            font: "Calibri",
-            color: "0563C1",
+            size: SMALL,
+            font: FONT,
+            color: "0B57D0",
             underline: {},
           }),
         ],
@@ -99,7 +106,7 @@ function contactParagraph(resume: StructuredResume) {
 
   return new Paragraph({
     alignment: AlignmentType.CENTER,
-    spacing: { after: 80 },
+    spacing: { after: 120 },
     children,
   });
 }
@@ -113,10 +120,11 @@ export async function buildDocxBuffer(resume: StructuredResume): Promise<Buffer>
       spacing: { after: 40 },
       children: [
         new TextRun({
-          text: resume.contact.fullName,
+          text: resume.contact.fullName.toUpperCase(),
           bold: true,
-          size: 32,
-          font: "Calibri",
+          size: 36,
+          font: FONT,
+          color: "111111",
         }),
       ],
     }),
@@ -131,8 +139,9 @@ export async function buildDocxBuffer(resume: StructuredResume): Promise<Buffer>
           new TextRun({
             text: resume.headline,
             bold: true,
-            size: 22,
-            font: "Calibri",
+            size: 21,
+            font: FONT,
+            color: "222222",
           }),
         ],
       }),
@@ -151,18 +160,18 @@ export async function buildDocxBuffer(resume: StructuredResume): Promise<Buffer>
     for (const group of resume.skills) {
       children.push(
         new Paragraph({
-          spacing: { after: 40, line: 276 },
+          spacing: { after: 48, line: 276 },
           children: [
             new TextRun({
               text: `${group.category}: `,
               bold: true,
-              size: 20,
-              font: "Calibri",
+              size: BODY,
+              font: FONT,
             }),
             new TextRun({
-              text: group.items.join(" | "),
-              size: 20,
-              font: "Calibri",
+              text: group.items.join(" · "),
+              size: BODY,
+              font: FONT,
             }),
           ],
         }),
@@ -178,8 +187,15 @@ export async function buildDocxBuffer(resume: StructuredResume): Promise<Buffer>
   if (resume.experience.length) {
     children.push(sectionTitle("Professional Experience"));
     for (const job of resume.experience) {
-      const header = `${job.company} — ${job.title} | ${job.start} – ${job.end}${job.location ? ` | ${job.location}` : ""}`;
-      children.push(body(header, { bold: true, before: 80 }));
+      children.push(
+        body(`${job.company} — ${job.title}`, { bold: true, before: 100 }),
+      );
+      children.push(
+        body(
+          `${job.start} – ${job.end}${job.location ? `  ·  ${job.location}` : ""}`,
+          { size: SMALL },
+        ),
+      );
       for (const b of job.bullets) children.push(bullet(b));
     }
   }
@@ -191,21 +207,21 @@ export async function buildDocxBuffer(resume: StructuredResume): Promise<Buffer>
         new TextRun({
           text: project.name,
           bold: true,
-          size: 20,
-          font: "Calibri",
+          size: BODY,
+          font: FONT,
         }),
       ];
       if (project.url) {
-        runs.push(new TextRun({ text: " | ", size: 20, font: "Calibri" }));
+        runs.push(new TextRun({ text: "  ·  ", size: BODY, font: FONT }));
         runs.push(
           new ExternalHyperlink({
             children: [
               new TextRun({
                 text: project.url.replace(/^https?:\/\//, ""),
                 style: "Hyperlink",
-                size: 20,
-                font: "Calibri",
-                color: "0563C1",
+                size: BODY,
+                font: FONT,
+                color: "0B57D0",
                 underline: {},
               }),
             ],
@@ -215,7 +231,7 @@ export async function buildDocxBuffer(resume: StructuredResume): Promise<Buffer>
       }
       children.push(
         new Paragraph({
-          spacing: { before: 60, after: 20 },
+          spacing: { before: 80, after: 28 },
           children: runs,
         }),
       );
@@ -228,7 +244,7 @@ export async function buildDocxBuffer(resume: StructuredResume): Promise<Buffer>
     for (const edu of resume.education) {
       children.push(
         body(
-          `${edu.degree} — ${edu.school}${edu.dates ? ` | ${edu.dates}` : ""}${edu.details ? ` | ${edu.details}` : ""}`,
+          `${edu.degree} — ${edu.school}${edu.dates ? `  ·  ${edu.dates}` : ""}${edu.details ? `  ·  ${edu.details}` : ""}`,
         ),
       );
     }

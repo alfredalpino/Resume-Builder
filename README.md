@@ -1,11 +1,12 @@
 # Resume-Builder
 
-ATS-friendly resume tailor with **Google Sign-In**, **BYOK Gemini**, and dual **PDF + DOCX** export. Session-only: nothing is persisted server-side.
+ATS-friendly resume tailor with **Google Sign-In**, **Local ATS (no API key)**, optional Gemini BYOK, and dual **PDF + DOCX** export. Session-only: nothing is persisted server-side.
 
 ## Features
 
 - Import PDF / DOCX / TXT / MD (or paste text)
-- Paste a job description and tailor with Gemini (truthful rewrite only)
+- **Local ATS** (default): JD keyword weave + reordering from your existing facts — no Gemini quota
+- Optional Gemini mode with model picker + automatic fallback to Local ATS
 - Preserve clickable hyperlinks in PDF and DOCX
 - ATS match score with keyword hits/gaps
 - Inline edit + structured JSON editor

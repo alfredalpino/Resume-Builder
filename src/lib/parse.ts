@@ -7,7 +7,8 @@ const MAX_BYTES = 5 * 1024 * 1024;
 
 const URL_RE = /https?:\/\/[^\s<>"')\]]+/gi;
 const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
-const PHONE_RE = /(?:\+?\d{1,3}[\s-]?)?(?:\(?\d{2,4}\)?[\s-]?)?\d{3,4}[\s-]?\d{3,4}/;
+const PHONE_RE =
+  /(?:\+?\d{1,3}[\s-]?)?(?:\(?\d{2,4}\)?[\s-]?)?\d{3,4}[\s-]?\d{3,4}/;
 
 export type ParseResult = {
   rawText: string;
@@ -25,7 +26,11 @@ function labelForUrl(url: string): string {
     if (host.includes("linkedin")) return "LinkedIn";
     if (host.includes("github")) return "GitHub";
     if (host.includes("gitlab")) return "GitLab";
-    if (host.includes("portfolio") || host.includes("vercel") || host.includes("netlify")) {
+    if (
+      host.includes("portfolio") ||
+      host.includes("vercel") ||
+      host.includes("netlify")
+    ) {
       return "Portfolio";
     }
     return host;
@@ -62,6 +67,39 @@ function extractLinksFromHtml(html: string): ResumeLink[] {
   return [...map.values()];
 }
 
+const SECTION_ALIASES: Record<string, string> = {
+  summary: "summary",
+  "professional summary": "summary",
+  profile: "summary",
+  objective: "summary",
+  skills: "skills",
+  "technical skills": "skills",
+  "core competencies": "skills",
+  experience: "experience",
+  "work experience": "experience",
+  "professional experience": "experience",
+  employment: "experience",
+  education: "education",
+  certifications: "certifications",
+  certificates: "certifications",
+  projects: "projects",
+  "labs and projects": "projects",
+  labs: "projects",
+  additional: "extras",
+  awards: "extras",
+};
+
+function isSectionHeader(line: string): string | null {
+  const cleaned = line.replace(/[:|]+$/g, "").trim().toLowerCase();
+  if (SECTION_ALIASES[cleaned]) return SECTION_ALIASES[cleaned];
+  const upper = line.replace(/[:|]+$/g, "").trim();
+  if (upper === upper.toUpperCase() && upper.length > 3 && upper.length < 40) {
+    const key = upper.toLowerCase();
+    if (SECTION_ALIASES[key]) return SECTION_ALIASES[key];
+  }
+  return null;
+}
+
 function heuristicDraft(rawText: string, links: ResumeLink[]): StructuredResume {
   const draft = emptyResume();
   const lines = rawText
@@ -77,8 +115,150 @@ function heuristicDraft(rawText: string, links: ResumeLink[]): StructuredResume 
     draft.contact.phone = phone.trim();
   }
   draft.contact.links = links;
-  draft.summary = lines.slice(1, 6).join(" ").slice(0, 600);
-  draft.headline = lines[1]?.slice(0, 120) || "";
+
+  const buckets: Record<string, string[]> = {
+    summary: [],
+    skills: [],
+    experience: [],
+    education: [],
+    certifications: [],
+    projects: [],
+    extras: [],
+    preamble: [],
+  };
+
+  let current = "preamble";
+  for (const line of lines.slice(1)) {
+    const section = isSectionHeader(line);
+    if (section) {
+      current = section;
+      continue;
+    }
+    buckets[current] = buckets[current] || [];
+    buckets[current].push(line);
+  }
+
+  if (buckets.preamble.length) {
+    draft.headline = buckets.preamble[0]?.slice(0, 140) || "";
+    if (!buckets.summary.length) {
+      draft.summary = buckets.preamble.slice(1, 5).join(" ").slice(0, 700);
+    }
+  }
+
+  if (buckets.summary.length) {
+    draft.summary = buckets.summary.join(" ").slice(0, 900);
+  }
+
+  if (buckets.skills.length) {
+    draft.skills = buckets.skills.map((line) => {
+      const parts = line.split(/[:：]/);
+      if (parts.length > 1) {
+        return {
+          category: parts[0].trim() || "Skills",
+          items: parts
+            .slice(1)
+            .join(":")
+            .split(/[|,•·]/)
+            .map((s) => s.trim())
+            .filter(Boolean),
+        };
+      }
+      return {
+        category: "Skills",
+        items: line
+          .split(/[|,•·]/)
+          .map((s) => s.trim())
+          .filter(Boolean),
+      };
+    });
+  }
+
+  if (buckets.certifications.length) {
+    draft.certifications = buckets.certifications;
+  }
+
+  if (buckets.education.length) {
+    draft.education = buckets.education.map((line) => {
+      const bits = line.split(/[—–|-]/).map((s) => s.trim()).filter(Boolean);
+      return {
+        school: bits[1] || bits[0] || line,
+        degree: bits[0] || line,
+        dates: bits[2] || "",
+        details: bits.slice(3).join(" | ") || undefined,
+      };
+    });
+  }
+
+  if (buckets.projects.length) {
+    let currentProject: { name: string; url?: string; bullets: string[] } | null =
+      null;
+    for (const line of buckets.projects) {
+      if (/^[-•*]/.test(line) && currentProject) {
+        currentProject.bullets.push(line.replace(/^[-•*]\s*/, ""));
+      } else {
+        if (currentProject) draft.projects.push(currentProject);
+        const url = line.match(URL_RE)?.[0];
+        currentProject = {
+          name: line.replace(URL_RE, "").replace(/\s*[|·-]\s*$/, "").trim() || line,
+          url: url ? normalizeUrl(url) : undefined,
+          bullets: [],
+        };
+      }
+    }
+    if (currentProject) draft.projects.push(currentProject);
+  }
+
+  if (buckets.experience.length) {
+    let currentJob: {
+      company: string;
+      title: string;
+      location?: string;
+      start: string;
+      end: string;
+      bullets: string[];
+    } | null = null;
+
+    for (const line of buckets.experience) {
+      if (/^[-•*]/.test(line) && currentJob) {
+        currentJob.bullets.push(line.replace(/^[-•*]\s*/, ""));
+        continue;
+      }
+      if (currentJob) draft.experience.push(currentJob);
+
+      const dateMatch = line.match(
+        /(\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4})\s*[–—-]\s*(Present|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|\d{4})/i,
+      );
+      const start = dateMatch?.[1] || "";
+      const end = dateMatch?.[2] || "Present";
+      const withoutDates = dateMatch
+        ? line.replace(dateMatch[0], "").replace(/\|\s*$/, "").trim()
+        : line;
+      const parts = withoutDates
+        .split(/\s+[—–-]\s+|\s+\|\s+/)
+        .map((p) => p.trim())
+        .filter(Boolean);
+
+      currentJob = {
+        company: parts[0] || withoutDates,
+        title: parts[1] || parts[0] || "Role",
+        location: parts[2],
+        start,
+        end,
+        bullets: [],
+      };
+    }
+    if (currentJob) draft.experience.push(currentJob);
+  }
+
+  if (buckets.extras.length) {
+    draft.extras = buckets.extras;
+  }
+
+  // Fallback summary if still empty
+  if (!draft.summary) {
+    draft.summary = lines.slice(1, 6).join(" ").slice(0, 600);
+  }
+
   return draft;
 }
 
@@ -113,7 +293,9 @@ export async function parseResumeBuffer(
   if (lower.endsWith(".pdf") || type.includes("pdf")) {
     const data = new Uint8Array(buffer);
     const { text } = await extractText(data, { mergePages: true });
-    const rawText = (Array.isArray(text) ? text.join("\n") : String(text || "")).trim();
+    const rawText = (
+      Array.isArray(text) ? text.join("\n") : String(text || "")
+    ).trim();
     const links = extractLinksFromText(rawText);
     return {
       rawText,

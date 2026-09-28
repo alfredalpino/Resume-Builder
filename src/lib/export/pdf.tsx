@@ -12,56 +12,62 @@ import type { StructuredResume } from "@/lib/schema";
 
 const styles = StyleSheet.create({
   page: {
-    paddingTop: 36,
-    paddingBottom: 36,
-    paddingHorizontal: 42,
+    paddingTop: 40,
+    paddingBottom: 40,
+    paddingHorizontal: 48,
     fontFamily: "Helvetica",
     fontSize: 10,
     lineHeight: 1.35,
-    color: "#000",
+    color: "#111111",
   },
   name: {
-    fontSize: 16,
+    fontSize: 18,
     fontFamily: "Helvetica-Bold",
     textAlign: "center",
-    marginBottom: 3,
+    letterSpacing: 0.4,
+    marginBottom: 4,
   },
   headline: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontFamily: "Helvetica-Bold",
     textAlign: "center",
-    marginBottom: 3,
+    color: "#222222",
+    marginBottom: 4,
   },
   contact: {
-    fontSize: 10,
+    fontSize: 9,
     textAlign: "center",
-    marginBottom: 8,
+    marginBottom: 10,
+    color: "#222222",
   },
   contactLink: {
-    color: "#0563C1",
-    textDecoration: "underline",
+    color: "#0B57D0",
+    textDecoration: "none",
   },
   section: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontFamily: "Helvetica-Bold",
-    marginTop: 8,
-    marginBottom: 3,
+    marginTop: 10,
+    marginBottom: 4,
     textTransform: "uppercase",
-    borderBottomWidth: 1,
-    borderBottomColor: "#000",
+    letterSpacing: 0.6,
+    borderBottomWidth: 1.25,
+    borderBottomColor: "#111111",
     paddingBottom: 2,
   },
   body: {
-    marginBottom: 2,
+    marginBottom: 3,
+    textAlign: "justify",
   },
   jobHeader: {
     fontFamily: "Helvetica-Bold",
-    marginTop: 4,
-    marginBottom: 1,
+    fontSize: 10,
+    marginTop: 6,
+    marginBottom: 2,
   },
   bullet: {
-    marginLeft: 8,
-    marginBottom: 1,
+    marginLeft: 10,
+    marginBottom: 2,
   },
   skillLabel: {
     fontFamily: "Helvetica-Bold",
@@ -76,12 +82,12 @@ function ContactLine({ resume }: { resume: StructuredResume }) {
 
   const nodes: React.ReactNode[] = [];
   if (plain.length) {
-    nodes.push(<Text key="plain">{plain.join(" | ")}</Text>);
+    nodes.push(<Text key="plain">{plain.join("  ·  ")}</Text>);
   }
 
   resume.contact.links.forEach((link, i) => {
     if (nodes.length || i > 0) {
-      nodes.push(<Text key={`sep-${i}`}>{" | "}</Text>);
+      nodes.push(<Text key={`sep-${i}`}>{"  ·  "}</Text>);
     }
     nodes.push(
       <Link key={link.url} src={link.url} style={styles.contactLink}>
@@ -95,9 +101,13 @@ function ContactLine({ resume }: { resume: StructuredResume }) {
 
 function ResumeDocument({ resume }: { resume: StructuredResume }) {
   return (
-    <Document>
+    <Document
+      title={`${resume.contact.fullName} Resume`}
+      author={resume.contact.fullName}
+      subject="ATS Resume"
+    >
       <Page size="LETTER" style={styles.page}>
-        <Text style={styles.name}>{resume.contact.fullName}</Text>
+        <Text style={styles.name}>{resume.contact.fullName.toUpperCase()}</Text>
         {resume.headline ? (
           <Text style={styles.headline}>{resume.headline}</Text>
         ) : null}
@@ -116,7 +126,7 @@ function ResumeDocument({ resume }: { resume: StructuredResume }) {
             {resume.skills.map((g) => (
               <Text key={g.category} style={styles.body}>
                 <Text style={styles.skillLabel}>{g.category}: </Text>
-                {g.items.join(" | ")}
+                {g.items.join(" · ")}
               </Text>
             ))}
           </View>
@@ -139,11 +149,14 @@ function ResumeDocument({ resume }: { resume: StructuredResume }) {
             {resume.experience.map((job, idx) => (
               <View key={`${job.company}-${idx}`}>
                 <Text style={styles.jobHeader}>
-                  {`${job.company} — ${job.title} | ${job.start} – ${job.end}${job.location ? ` | ${job.location}` : ""}`}
+                  {`${job.company} — ${job.title}`}
+                </Text>
+                <Text style={{ fontSize: 9, marginBottom: 2, color: "#333" }}>
+                  {`${job.start} – ${job.end}${job.location ? `  ·  ${job.location}` : ""}`}
                 </Text>
                 {job.bullets.map((b, i) => (
                   <Text key={i} style={styles.bullet}>
-                    {`- ${b}`}
+                    {`• ${b}`}
                   </Text>
                 ))}
               </View>
@@ -158,7 +171,7 @@ function ResumeDocument({ resume }: { resume: StructuredResume }) {
               <View key={`${p.name}-${idx}`}>
                 <Text style={styles.jobHeader}>
                   {p.name}
-                  {p.url ? " | " : ""}
+                  {p.url ? "  ·  " : ""}
                   {p.url ? (
                     <Link src={p.url} style={styles.contactLink}>
                       {p.url.replace(/^https?:\/\//, "")}
@@ -167,7 +180,7 @@ function ResumeDocument({ resume }: { resume: StructuredResume }) {
                 </Text>
                 {p.bullets.map((b, i) => (
                   <Text key={i} style={styles.bullet}>
-                    {`- ${b}`}
+                    {`• ${b}`}
                   </Text>
                 ))}
               </View>
@@ -180,7 +193,7 @@ function ResumeDocument({ resume }: { resume: StructuredResume }) {
             <Text style={styles.section}>Education</Text>
             {resume.education.map((e, idx) => (
               <Text key={`${e.school}-${idx}`} style={styles.body}>
-                {`${e.degree} — ${e.school}${e.dates ? ` | ${e.dates}` : ""}${e.details ? ` | ${e.details}` : ""}`}
+                {`${e.degree} — ${e.school}${e.dates ? `  ·  ${e.dates}` : ""}${e.details ? `  ·  ${e.details}` : ""}`}
               </Text>
             ))}
           </View>

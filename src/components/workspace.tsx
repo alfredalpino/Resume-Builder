@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { AtsScore, StructuredResume } from "@/lib/schema";
 import { emptyResume } from "@/lib/schema";
 import { GEMINI_KEY_HEADER } from "@/lib/constants";
+import { GEMINI_MODELS } from "@/lib/gemini-models";
 import { SignOutButton } from "@/components/auth-buttons";
 
 type Props = {
@@ -30,16 +31,21 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 export function Workspace({ userName, userEmail }: Props) {
+  const [mode, setMode] = useState<"local" | "gemini">("local");
   const [geminiKey, setGeminiKey] = useState("");
+  const [geminiModel, setGeminiModel] = useState<string>(GEMINI_MODELS[0]);
   const [keyStatus, setKeyStatus] = useState<"idle" | "ok" | "error">("idle");
   const [keyMessage, setKeyMessage] = useState("");
   const [rawText, setRawText] = useState("");
   const [jobDescription, setJobDescription] = useState("");
   const [resume, setResume] = useState<StructuredResume>(emptyResume());
   const [score, setScore] = useState<AtsScore | null>(null);
+  const [engine, setEngine] = useState<"local" | "gemini" | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [showAdvancedAi, setShowAdvancedAi] = useState(false);
 
   const headers = useMemo(() => {
     const h: Record<string, string> = {};
@@ -54,11 +60,16 @@ export function Workspace({ userName, userEmail }: Props) {
     try {
       const res = await fetch("/api/validate-key", {
         method: "POST",
-        headers,
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: geminiModel }),
       });
       if (!res.ok) throw new Error(await readError(res));
+      const data = (await res.json()) as { model?: string };
       setKeyStatus("ok");
-      setKeyMessage("Gemini key validated for this session.");
+      setKeyMessage(
+        `Gemini key works${data.model ? ` (${data.model})` : ""}. Optional — Local ATS needs no key.`,
+      );
+      if (data.model) setGeminiModel(data.model);
     } catch (err) {
       setKeyStatus("error");
       setKeyMessage(err instanceof Error ? err.message : "Validation failed");
@@ -88,6 +99,7 @@ export function Workspace({ userName, userEmail }: Props) {
       setRawText(data.rawText);
       setResume(data.resume);
       setScore(null);
+      setEngine(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Parse failed");
     } finally {
@@ -112,6 +124,7 @@ export function Workspace({ userName, userEmail }: Props) {
       const data = (await res.json()) as { resume: StructuredResume };
       setResume(data.resume);
       setScore(null);
+      setEngine(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Parse failed");
     } finally {
@@ -120,29 +133,39 @@ export function Workspace({ userName, userEmail }: Props) {
   }
 
   async function tailor() {
-    if (!geminiKey.trim()) {
-      setError("Add and validate your Gemini API key first");
-      return;
-    }
     if (!jobDescription.trim()) {
       setError("Paste a job description");
       return;
     }
+    if (mode === "gemini" && !geminiKey.trim()) {
+      setError("Gemini mode needs a key — or switch to Local ATS (recommended)");
+      return;
+    }
     setBusy("tailor");
     setError(null);
+    setWarning(null);
     try {
       const res = await fetch("/api/tailor", {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ resume, jobDescription }),
+        body: JSON.stringify({
+          resume,
+          jobDescription,
+          mode,
+          model: geminiModel,
+        }),
       });
       if (!res.ok) throw new Error(await readError(res));
       const data = (await res.json()) as {
         resume: StructuredResume;
         score: AtsScore;
+        engine?: "local" | "gemini";
+        warning?: string;
       };
       setResume(data.resume);
       setScore(data.score);
+      setEngine(data.engine || mode);
+      if (data.warning) setWarning(data.warning);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Tailoring failed");
     } finally {
@@ -170,7 +193,10 @@ export function Workspace({ userName, userEmail }: Props) {
     }
   }
 
-  function updateContactField(field: "fullName" | "email" | "phone" | "location", value: string) {
+  function updateContactField(
+    field: "fullName" | "email" | "phone" | "location",
+    value: string,
+  ) {
     setResume((r) => ({
       ...r,
       contact: { ...r.contact, [field]: value },
@@ -184,7 +210,7 @@ export function Workspace({ userName, userEmail }: Props) {
           <div>
             <p className="text-lg font-semibold tracking-tight">Resume-Builder</p>
             <p className="text-xs text-stone-500">
-              Signed in as {userName || userEmail || "user"} · session-only · BYOK Gemini
+              {userName || userEmail || "user"} · Local ATS by default · no Gemini key required
             </p>
           </div>
           <SignOutButton />
@@ -193,40 +219,90 @@ export function Workspace({ userName, userEmail }: Props) {
 
       <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6">
         <section className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
-            Setup
-          </h2>
-          <p className="mt-1 text-sm text-stone-600">
-            Your Gemini key stays in this browser session and is sent only as a request header. It is never saved on the server.
-          </p>
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-            <input
-              type="password"
-              autoComplete="off"
-              placeholder="Gemini API key"
-              value={geminiKey}
-              onChange={(e) => {
-                setGeminiKey(e.target.value);
-                setKeyStatus("idle");
-              }}
-              className="flex-1 rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
-            />
-            <button
-              type="button"
-              disabled={!!busy || !geminiKey.trim()}
-              onClick={validateKey}
-              className="rounded-md bg-stone-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-            >
-              {busy === "validate" ? "Validating…" : "Validate key"}
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
+                Tailor engine
+              </h2>
+              <p className="mt-1 text-sm text-stone-600">
+                Local ATS rewrites from your resume facts and JD keywords — no API quota, no key.
+              </p>
+            </div>
+            <div className="inline-flex rounded-lg border border-stone-200 bg-stone-50 p-1">
+              <button
+                type="button"
+                onClick={() => setMode("local")}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+                  mode === "local"
+                    ? "bg-teal-700 text-white"
+                    : "text-stone-700 hover:bg-white"
+                }`}
+              >
+                Local ATS
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("gemini");
+                  setShowAdvancedAi(true);
+                }}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+                  mode === "gemini"
+                    ? "bg-teal-700 text-white"
+                    : "text-stone-700 hover:bg-white"
+                }`}
+              >
+                Gemini (optional)
+              </button>
+            </div>
           </div>
-          {keyMessage ? (
-            <p
-              className={`mt-2 text-sm ${keyStatus === "ok" ? "text-teal-700" : "text-red-700"}`}
-            >
-              {keyMessage}
-            </p>
-          ) : null}
+
+          {(showAdvancedAi || mode === "gemini") && (
+            <div className="mt-4 rounded-lg border border-dashed border-stone-300 bg-stone-50/80 p-3">
+              <p className="text-xs text-stone-500">
+                Optional. Free-tier Gemini often hits quota (429/503). If Gemini fails, we auto-fall back to Local ATS.
+              </p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <input
+                  type="password"
+                  autoComplete="off"
+                  placeholder="Gemini API key (optional)"
+                  value={geminiKey}
+                  onChange={(e) => {
+                    setGeminiKey(e.target.value);
+                    setKeyStatus("idle");
+                  }}
+                  className="flex-1 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-600"
+                />
+                <select
+                  value={geminiModel}
+                  onChange={(e) => setGeminiModel(e.target.value)}
+                  className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm"
+                >
+                  {GEMINI_MODELS.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={!!busy || !geminiKey.trim()}
+                  onClick={validateKey}
+                  className="rounded-md bg-stone-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  {busy === "validate" ? "Checking…" : "Validate"}
+                </button>
+              </div>
+              {keyMessage ? (
+                <p
+                  className={`mt-2 text-sm ${keyStatus === "ok" ? "text-teal-700" : "text-red-700"}`}
+                >
+                  {keyMessage}
+                </p>
+              ) : null}
+            </div>
+          )}
         </section>
 
         <section className="grid gap-4 lg:grid-cols-2">
@@ -280,7 +356,13 @@ export function Workspace({ userName, userEmail }: Props) {
               onClick={tailor}
               className="mt-3 w-full rounded-md bg-teal-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-50"
             >
-              {busy === "tailor" ? "Tailoring with Gemini…" : "Tailor resume"}
+              {busy === "tailor"
+                ? mode === "local"
+                  ? "Tailoring locally…"
+                  : "Tailoring…"
+                : mode === "local"
+                  ? "Tailor resume (Local ATS)"
+                  : "Tailor resume (Gemini)"}
             </button>
           </div>
         </section>
@@ -290,6 +372,11 @@ export function Workspace({ userName, userEmail }: Props) {
             {error}
           </div>
         ) : null}
+        {warning ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            {warning}
+          </div>
+        ) : null}
 
         {score ? (
           <section className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
@@ -297,6 +384,11 @@ export function Workspace({ userName, userEmail }: Props) {
               <div>
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
                   ATS score
+                  {engine ? (
+                    <span className="ml-2 rounded bg-stone-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-stone-600">
+                      {engine === "local" ? "Local ATS" : "Gemini"}
+                    </span>
+                  ) : null}
                 </h2>
                 <p className="mt-1 text-3xl font-semibold tracking-tight">
                   {score.matchRate}%
@@ -363,13 +455,6 @@ export function Workspace({ userName, userEmail }: Props) {
                 </div>
               </div>
             </div>
-            {score.formatNotes.length ? (
-              <ul className="mt-3 list-disc pl-5 text-xs text-stone-600">
-                {score.formatNotes.map((n) => (
-                  <li key={n}>{n}</li>
-                ))}
-              </ul>
-            ) : null}
           </section>
         ) : null}
 
@@ -400,14 +485,18 @@ export function Workspace({ userName, userEmail }: Props) {
               <input
                 className="rounded-md border border-stone-300 px-3 py-2 text-sm"
                 value={resume.headline}
-                onChange={(e) => setResume((r) => ({ ...r, headline: e.target.value }))}
+                onChange={(e) =>
+                  setResume((r) => ({ ...r, headline: e.target.value }))
+                }
                 placeholder="Headline"
               />
               <textarea
                 className="rounded-md border border-stone-300 px-3 py-2 text-sm"
                 rows={5}
                 value={resume.summary}
-                onChange={(e) => setResume((r) => ({ ...r, summary: e.target.value }))}
+                onChange={(e) =>
+                  setResume((r) => ({ ...r, summary: e.target.value }))
+                }
                 placeholder="Summary"
               />
               <textarea
@@ -423,9 +512,6 @@ export function Workspace({ userName, userEmail }: Props) {
                   }
                 }}
               />
-              <p className="text-xs text-stone-500">
-                Advanced: edit structured JSON. Links under contact.links become clickable in PDF/DOCX.
-              </p>
             </div>
           </div>
 
@@ -433,27 +519,31 @@ export function Workspace({ userName, userEmail }: Props) {
             <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
               Preview
             </h2>
-            <article className="mt-3 max-h-[720px] overflow-auto rounded-md border border-stone-200 bg-white p-6 text-[11px] leading-relaxed text-black">
-              <h1 className="text-center text-base font-bold">{resume.contact.fullName}</h1>
+            <article className="mt-3 max-h-[720px] overflow-auto rounded-md border border-stone-200 bg-white p-8 text-[10.5px] leading-[1.35] text-[#111]">
+              <h1 className="text-center text-[18px] font-bold tracking-wide">
+                {resume.contact.fullName.toUpperCase()}
+              </h1>
               {resume.headline ? (
-                <p className="text-center text-[11px] font-semibold">{resume.headline}</p>
+                <p className="mt-1 text-center text-[10.5px] font-semibold">
+                  {resume.headline}
+                </p>
               ) : null}
-              <p className="mt-1 text-center text-[10px]">
+              <p className="mt-1 text-center text-[9px]">
                 {[resume.contact.email, resume.contact.phone, resume.contact.location]
                   .filter(Boolean)
-                  .join(" | ")}
+                  .join("  ·  ")}
                 {resume.contact.links.length
-                  ? `${[resume.contact.email, resume.contact.phone, resume.contact.location].some(Boolean) ? " | " : ""}${resume.contact.links
+                  ? `${[resume.contact.email, resume.contact.phone, resume.contact.location].some(Boolean) ? "  ·  " : ""}${resume.contact.links
                       .map((l) => l.label)
-                      .join(" | ")}`
+                      .join("  ·  ")}`
                   : ""}
               </p>
               {resume.contact.links.length ? (
-                <p className="mt-1 text-center text-[10px] text-blue-700">
+                <p className="mt-1 text-center text-[9px] text-[#0B57D0]">
                   {resume.contact.links.map((l, i) => (
                     <span key={l.url}>
                       {i > 0 ? " · " : ""}
-                      <a href={l.url} target="_blank" rel="noreferrer" className="underline">
+                      <a href={l.url} target="_blank" rel="noreferrer">
                         {l.url}
                       </a>
                     </span>
@@ -463,22 +553,22 @@ export function Workspace({ userName, userEmail }: Props) {
 
               {resume.summary ? (
                 <>
-                  <h3 className="mt-4 border-b border-black text-[11px] font-bold uppercase">
+                  <h3 className="mt-4 border-b border-[#111] pb-0.5 text-[10.5px] font-bold uppercase tracking-wide">
                     Professional Summary
                   </h3>
-                  <p className="mt-1">{resume.summary}</p>
+                  <p className="mt-1 text-justify">{resume.summary}</p>
                 </>
               ) : null}
 
               {resume.skills.length ? (
                 <>
-                  <h3 className="mt-4 border-b border-black text-[11px] font-bold uppercase">
+                  <h3 className="mt-4 border-b border-[#111] pb-0.5 text-[10.5px] font-bold uppercase tracking-wide">
                     Technical Skills
                   </h3>
                   {resume.skills.map((g) => (
                     <p key={g.category} className="mt-1">
                       <strong>{g.category}: </strong>
-                      {g.items.join(" | ")}
+                      {g.items.join(" · ")}
                     </p>
                   ))}
                 </>
@@ -486,18 +576,21 @@ export function Workspace({ userName, userEmail }: Props) {
 
               {resume.experience.length ? (
                 <>
-                  <h3 className="mt-4 border-b border-black text-[11px] font-bold uppercase">
+                  <h3 className="mt-4 border-b border-[#111] pb-0.5 text-[10.5px] font-bold uppercase tracking-wide">
                     Professional Experience
                   </h3>
                   {resume.experience.map((job, idx) => (
                     <div key={`${job.company}-${idx}`} className="mt-2">
                       <p className="font-bold">
-                        {job.company} — {job.title} | {job.start} – {job.end}
-                        {job.location ? ` | ${job.location}` : ""}
+                        {job.company} — {job.title}
+                      </p>
+                      <p className="text-[9px] text-stone-600">
+                        {job.start} – {job.end}
+                        {job.location ? `  ·  ${job.location}` : ""}
                       </p>
                       <ul className="mt-0.5 list-none pl-2">
                         {job.bullets.map((b, i) => (
-                          <li key={i}>- {b}</li>
+                          <li key={i}>• {b}</li>
                         ))}
                       </ul>
                     </div>
@@ -507,7 +600,7 @@ export function Workspace({ userName, userEmail }: Props) {
 
               {resume.projects.length ? (
                 <>
-                  <h3 className="mt-4 border-b border-black text-[11px] font-bold uppercase">
+                  <h3 className="mt-4 border-b border-[#111] pb-0.5 text-[10.5px] font-bold uppercase tracking-wide">
                     Projects
                   </h3>
                   {resume.projects.map((p, idx) => (
@@ -516,8 +609,13 @@ export function Workspace({ userName, userEmail }: Props) {
                         {p.name}
                         {p.url ? (
                           <>
-                            {" | "}
-                            <a href={p.url} className="text-blue-700 underline" target="_blank" rel="noreferrer">
+                            {" · "}
+                            <a
+                              href={p.url}
+                              className="text-[#0B57D0]"
+                              target="_blank"
+                              rel="noreferrer"
+                            >
                               {p.url.replace(/^https?:\/\//, "")}
                             </a>
                           </>
@@ -525,7 +623,7 @@ export function Workspace({ userName, userEmail }: Props) {
                       </p>
                       <ul className="pl-2">
                         {p.bullets.map((b, i) => (
-                          <li key={i}>- {b}</li>
+                          <li key={i}>• {b}</li>
                         ))}
                       </ul>
                     </div>
@@ -535,13 +633,13 @@ export function Workspace({ userName, userEmail }: Props) {
 
               {resume.education.length ? (
                 <>
-                  <h3 className="mt-4 border-b border-black text-[11px] font-bold uppercase">
+                  <h3 className="mt-4 border-b border-[#111] pb-0.5 text-[10.5px] font-bold uppercase tracking-wide">
                     Education
                   </h3>
                   {resume.education.map((e, idx) => (
                     <p key={`${e.school}-${idx}`} className="mt-1">
                       {e.degree} — {e.school}
-                      {e.dates ? ` | ${e.dates}` : ""}
+                      {e.dates ? `  ·  ${e.dates}` : ""}
                     </p>
                   ))}
                 </>
