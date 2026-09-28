@@ -18,7 +18,7 @@ export default async function HomePage() {
         </h1>
         <p className="mt-4 max-w-lg text-base leading-relaxed text-stone-600">
           Import your resume, paste a job description, and download ATS-friendly PDF and DOCX
-          with clickable links. Smart Thinking is always on — no keyword spam, no invented experience.
+          with clickable links. Runs on NLP libraries — no Gemini key, no invented experience.
         </p>
         <div className="mt-8 flex flex-wrap items-center gap-3">
           <SignInButton />

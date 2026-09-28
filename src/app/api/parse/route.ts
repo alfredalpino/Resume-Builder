@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { apiError, requireSession } from "@/lib/api";
-import { getGeminiKey, structureResumeWithGemini } from "@/lib/gemini";
 import { MAX_BYTES, parseResumeBuffer, parseResumeText } from "@/lib/parse";
-import { StructuredResumeSchema } from "@/lib/schema";
 
 export const runtime = "nodejs";
 
@@ -43,21 +41,6 @@ export async function POST(req: Request) {
       rawText = parsed.rawText;
       links = parsed.links;
       draft = parsed.draft;
-    }
-
-    const key = getGeminiKey(req);
-    if (key && rawText) {
-      try {
-        draft = await structureResumeWithGemini(key, rawText, links);
-        draft = StructuredResumeSchema.parse(draft);
-        // Ensure known links survive structuring
-        const existing = new Set(draft.contact.links.map((l) => l.url));
-        for (const link of links) {
-          if (!existing.has(link.url)) draft.contact.links.push(link);
-        }
-      } catch {
-        // Keep heuristic draft if structuring fails
-      }
     }
 
     return NextResponse.json({

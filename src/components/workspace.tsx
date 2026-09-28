@@ -1,10 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { AtsScore, StructuredResume } from "@/lib/schema";
 import { emptyResume } from "@/lib/schema";
-import { GEMINI_KEY_HEADER } from "@/lib/constants";
-import { GEMINI_MODELS } from "@/lib/gemini-models";
 import { SignOutButton } from "@/components/auth-buttons";
 
 type Props = {
@@ -31,25 +29,14 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 export function Workspace({ userName, userEmail }: Props) {
-  const [useGeminiEnhance, setUseGeminiEnhance] = useState(false);
-  const [geminiKey, setGeminiKey] = useState("");
-  const [geminiModel, setGeminiModel] = useState<string>(GEMINI_MODELS[0]);
   const [rawText, setRawText] = useState("");
   const [jobDescription, setJobDescription] = useState("");
   const [resume, setResume] = useState<StructuredResume>(emptyResume());
   const [score, setScore] = useState<AtsScore | null>(null);
   const [thinking, setThinking] = useState<string[]>([]);
-  const [engine, setEngine] = useState<string | null>(null);
-  const [warning, setWarning] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
-
-  const headers = useMemo(() => {
-    const h: Record<string, string> = {};
-    if (geminiKey.trim()) h[GEMINI_KEY_HEADER] = geminiKey.trim();
-    return h;
-  }, [geminiKey]);
 
   async function onFileChange(file: File | null) {
     if (!file) return;
@@ -59,14 +46,13 @@ export function Workspace({ userName, userEmail }: Props) {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch("/api/parse", { method: "POST", headers, body: form });
+      const res = await fetch("/api/parse", { method: "POST", body: form });
       if (!res.ok) throw new Error(await readError(res));
       const data = (await res.json()) as { rawText: string; resume: StructuredResume };
       setRawText(data.rawText);
       setResume(data.resume);
       setScore(null);
       setThinking([]);
-      setEngine(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Parse failed");
     } finally {
@@ -84,7 +70,7 @@ export function Workspace({ userName, userEmail }: Props) {
     try {
       const res = await fetch("/api/parse", {
         method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: rawText }),
       });
       if (!res.ok) throw new Error(await readError(res));
@@ -92,7 +78,6 @@ export function Workspace({ userName, userEmail }: Props) {
       setResume(data.resume);
       setScore(null);
       setThinking([]);
-      setEngine(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Parse failed");
     } finally {
@@ -105,36 +90,22 @@ export function Workspace({ userName, userEmail }: Props) {
       setError("Paste a job description");
       return;
     }
-    if (useGeminiEnhance && !geminiKey.trim()) {
-      setError("Turn off Gemini enhance, or paste a Gemini key");
-      return;
-    }
     setBusy("tailor");
     setError(null);
-    setWarning(null);
     try {
       const res = await fetch("/api/tailor", {
         method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          resume,
-          jobDescription,
-          mode: useGeminiEnhance ? "gemini" : "smart",
-          model: geminiModel,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resume, jobDescription }),
       });
       if (!res.ok) throw new Error(await readError(res));
       const data = (await res.json()) as {
         resume: StructuredResume;
         score: AtsScore;
-        engine?: string;
-        warning?: string;
       };
       setResume(data.resume);
       setScore(data.score);
       setThinking(data.score.thinking || []);
-      setEngine(data.engine || "smart");
-      if (data.warning) setWarning(data.warning);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Tailoring failed");
     } finally {
@@ -176,7 +147,7 @@ export function Workspace({ userName, userEmail }: Props) {
           <div>
             <p className="text-lg font-semibold tracking-tight">Resume-Builder</p>
             <p className="text-xs text-stone-500">
-              {userName || userEmail || "user"} · Smart Thinking locked on · no keyword spam
+              {userName || userEmail || "user"} · Smart Thinking · no API keys
             </p>
           </div>
           <SignOutButton />
@@ -188,59 +159,22 @@ export function Workspace({ userName, userEmail }: Props) {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-teal-800">
-                Engine
+                Backend
               </p>
               <h2 className="mt-1 text-base font-semibold text-stone-900">
-                Smart Thinking (default — always on)
+                Smart Thinking (always on)
               </h2>
               <p className="mt-1 max-w-2xl text-sm text-stone-600">
-                Analyzes the JD for real skills/tools/roles, maps them to your resume evidence,
-                reorders content, and never invents facts or stuffs filler words like “not / help / do”.
+                Powered by <code className="text-xs">compromise</code>,{" "}
+                <code className="text-xs">natural</code> (TF-IDF),{" "}
+                <code className="text-xs">keyword-extractor</code>, and{" "}
+                <code className="text-xs">stopword</code>. No Gemini key. No invented experience.
               </p>
             </div>
             <span className="rounded-full bg-teal-700 px-3 py-1 text-xs font-semibold text-white">
               Locked
             </span>
           </div>
-
-          <details className="mt-4 rounded-lg border border-stone-200 bg-white/80 p-3">
-            <summary className="cursor-pointer text-sm font-medium text-stone-700">
-              Optional: Gemini enhance (after Smart Thinking)
-            </summary>
-            <div className="mt-3 space-y-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={useGeminiEnhance}
-                  onChange={(e) => setUseGeminiEnhance(e.target.checked)}
-                />
-                Also run Gemini refine (falls back to Smart Thinking if quota fails)
-              </label>
-              {useGeminiEnhance ? (
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <input
-                    type="password"
-                    autoComplete="off"
-                    placeholder="Gemini API key"
-                    value={geminiKey}
-                    onChange={(e) => setGeminiKey(e.target.value)}
-                    className="flex-1 rounded-md border border-stone-300 px-3 py-2 text-sm"
-                  />
-                  <select
-                    value={geminiModel}
-                    onChange={(e) => setGeminiModel(e.target.value)}
-                    className="rounded-md border border-stone-300 px-3 py-2 text-sm"
-                  >
-                    {GEMINI_MODELS.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : null}
-            </div>
-          </details>
         </section>
 
         <section className="grid gap-4 lg:grid-cols-2">
@@ -304,11 +238,6 @@ export function Workspace({ userName, userEmail }: Props) {
             {error}
           </div>
         ) : null}
-        {warning ? (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            {warning}
-          </div>
-        ) : null}
 
         {thinking.length ? (
           <section className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
@@ -330,7 +259,7 @@ export function Workspace({ userName, userEmail }: Props) {
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
                   ATS score
                   <span className="ml-2 rounded bg-teal-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-800">
-                    {engine === "gemini+smart" ? "Smart + Gemini" : "Smart Thinking"}
+                    Smart Thinking
                   </span>
                 </h2>
                 <p className="mt-1 text-3xl font-semibold tracking-tight">
@@ -340,7 +269,8 @@ export function Workspace({ userName, userEmail }: Props) {
                   </span>
                 </p>
                 <p className="text-xs text-stone-500">
-                  Keywords {score.keywordScore}% · Format {score.formatScore}%
+                  Keywords {score.keywordScore}% · TF-IDF {score.similarity ?? "—"}% · Format{" "}
+                  {score.formatScore}%
                 </p>
               </div>
               <div className="flex gap-2">
@@ -381,9 +311,7 @@ export function Workspace({ userName, userEmail }: Props) {
                 </div>
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase text-amber-800">
-                  Honest gaps
-                </p>
+                <p className="text-xs font-semibold uppercase text-amber-800">Honest gaps</p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {score.missing.length ? (
                     score.missing.map((h) => (
@@ -465,9 +393,7 @@ export function Workspace({ userName, userEmail }: Props) {
                 {resume.contact.fullName.toUpperCase()}
               </h1>
               {resume.headline ? (
-                <p className="mt-1 text-center text-[10.5px] font-semibold">
-                  {resume.headline}
-                </p>
+                <p className="mt-1 text-center text-[10.5px] font-semibold">{resume.headline}</p>
               ) : null}
               <p className="mt-1 text-center text-[9px]">
                 {[resume.contact.email, resume.contact.phone, resume.contact.location]
@@ -479,7 +405,6 @@ export function Workspace({ userName, userEmail }: Props) {
                       .join("  ·  ")}`
                   : ""}
               </p>
-
               {resume.summary ? (
                 <>
                   <h3 className="mt-4 border-b border-[#111] pb-0.5 text-[10.5px] font-bold uppercase tracking-wide">
@@ -488,7 +413,6 @@ export function Workspace({ userName, userEmail }: Props) {
                   <p className="mt-1 text-justify">{resume.summary}</p>
                 </>
               ) : null}
-
               {resume.skills.length ? (
                 <>
                   <h3 className="mt-4 border-b border-[#111] pb-0.5 text-[10.5px] font-bold uppercase tracking-wide">
@@ -502,7 +426,6 @@ export function Workspace({ userName, userEmail }: Props) {
                   ))}
                 </>
               ) : null}
-
               {resume.experience.length ? (
                 <>
                   <h3 className="mt-4 border-b border-[#111] pb-0.5 text-[10.5px] font-bold uppercase tracking-wide">
@@ -526,7 +449,6 @@ export function Workspace({ userName, userEmail }: Props) {
                   ))}
                 </>
               ) : null}
-
               {resume.education.length ? (
                 <>
                   <h3 className="mt-4 border-b border-[#111] pb-0.5 text-[10.5px] font-bold uppercase tracking-wide">
