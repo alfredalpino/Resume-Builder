@@ -12,7 +12,7 @@ export default async function HomePage() {
     <div className="relative min-h-screen overflow-hidden bg-[var(--bg)]">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(245,165,36,0.08),_transparent_55%)]" />
       <header className="relative mx-auto flex max-w-5xl items-center justify-between px-6 py-6">
-        <div className="flex items-baseline gap-2">
+        <div className="flex items-baseline gap-2" aria-label="Alfred Terminal">
           <span className="font-mono text-sm text-[var(--alfred-amber)]">&gt;_</span>
           <span className="text-sm font-semibold tracking-wide text-[var(--text)]">
             Alfred Terminal
@@ -23,7 +23,6 @@ export default async function HomePage() {
             Buy me a coffee
           </Link>
           <ThemeToggle />
-          <SignInButton />
         </div>
       </header>
 
@@ -40,7 +39,10 @@ export default async function HomePage() {
           Tailor your resume to the job you actually want. Generate a role-specific cover letter.
           Download ATS-ready PDF or DOCX in minutes.
         </p>
-        <p className="mt-3 text-sm text-[var(--text-muted)]">Tailored to the job. Built for candidates.</p>
+        <p className="mt-3 max-w-lg text-sm leading-relaxed text-[var(--text-muted)]">
+          Built for people who are actively applying — upload once, target a role, review the
+          changes, and export. Free to use. Subtle, Balanced, or Aggressive — you stay in control.
+        </p>
         <div className="mt-10 flex flex-wrap items-center gap-3">
           <SignInButton />
           <a

@@ -49,7 +49,6 @@ function loadRazorpayScript(): Promise<boolean> {
 export function CoffeeClient() {
   const [leaderboard, setLeaderboard] = useState<LeaderEntry[]>([]);
   const [rates, setRates] = useState<Rates | null>(null);
-  const [razorpayReady, setRazorpayReady] = useState(false);
   const [name, setName] = useState("");
   const [amount, setAmount] = useState(1);
   const [currency, setCurrency] = useState("INR");
@@ -70,11 +69,9 @@ export function CoffeeClient() {
       const data = (await res.json()) as {
         leaderboard: LeaderEntry[];
         rates: Rates;
-        razorpayReady?: boolean;
       };
       setLeaderboard(data.leaderboard || []);
       setRates(data.rates);
-      setRazorpayReady(Boolean(data.razorpayReady));
     } catch {
       /* ignore */
     }
@@ -229,9 +226,6 @@ export function CoffeeClient() {
         </button>
         <p className="mt-3 text-center text-xs text-[var(--text-muted)]">
           From ${COFFEE.tipMinUsd}. Everything in Alfred Terminal stays free.
-          {!razorpayReady
-            ? " Checkout goes live when payment is connected — Kind souls only shows confirmed coffees."
-            : " You’ll appear on Kind souls after payment succeeds."}
         </p>
       </div>
 

@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Check,
   ChevronDown,
+  Coffee,
   Download,
   Eye,
   FileText,
@@ -504,6 +505,13 @@ export function Workspace({ userName, userEmail }: Props) {
     setResume((r) => ({ ...r, contact: { ...r.contact, [field]: value } }));
   }
 
+  function goHomeStep() {
+    if (step === 1) return;
+    setStep(1);
+    setMobileTab("workspace");
+    setMobileMenuOpen(false);
+  }
+
   const processLabel =
     busy === "parse"
       ? "> PARSING RESUME..."
@@ -518,8 +526,19 @@ export function Workspace({ userName, userEmail }: Props) {
   return (
     <div className="flex min-h-[100dvh] flex-col bg-[var(--bg)] text-[var(--text)]">
       <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--surface)]/95 pt-safe backdrop-blur">
-        <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-2 px-3 py-2.5 sm:px-4 lg:px-8 lg:py-3">
-          <div className="min-w-0 shrink">
+        <div className="relative mx-auto flex max-w-[1440px] items-center justify-between gap-2 px-3 py-2.5 sm:px-4 lg:px-8 lg:py-3">
+          <button
+            type="button"
+            onClick={goHomeStep}
+            className={`min-w-0 shrink text-left ${
+              step === 1
+                ? "cursor-default"
+                : "rounded-md outline-none transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[var(--alfred-amber)]/40"
+            }`}
+            aria-label={
+              step === 1 ? "Alfred Terminal" : "Alfred Terminal — back to Resume step"
+            }
+          >
             <p className="flex items-center gap-1.5 text-sm font-semibold tracking-tight">
               <span className="font-mono text-[var(--alfred-amber)]">&gt;_</span>
               <span className="truncate">Alfred Terminal</span>
@@ -527,7 +546,7 @@ export function Workspace({ userName, userEmail }: Props) {
             <p className="hidden text-[10px] text-[var(--text-muted)] sm:block">
               Your career, intelligently optimized.
             </p>
-          </div>
+          </button>
 
           <div className="hidden min-w-0 flex-1 lg:block">
             <ProgressStepper
@@ -537,7 +556,7 @@ export function Workspace({ userName, userEmail }: Props) {
             />
           </div>
 
-          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          <div className="relative flex shrink-0 items-center gap-1.5 sm:gap-2">
             {draftStatus ? (
               <span className="hidden text-[10px] text-[var(--text-muted)] md:inline">
                 {draftStatus}
@@ -558,13 +577,83 @@ export function Workspace({ userName, userEmail }: Props) {
             </div>
             <button
               type="button"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-secondary)] sm:hidden"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-secondary)] transition hover:border-[var(--border-hover)] hover:text-[var(--text)] sm:hidden"
               aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
               aria-expanded={mobileMenuOpen}
+              aria-haspopup="menu"
               onClick={() => setMobileMenuOpen((o) => !o)}
             >
               {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
             </button>
+
+            {mobileMenuOpen ? (
+              <>
+                <button
+                  type="button"
+                  className="fixed inset-0 z-40 cursor-default bg-black/20 sm:hidden"
+                  aria-label="Close menu overlay"
+                  onClick={() => setMobileMenuOpen(false)}
+                />
+                <div
+                  role="menu"
+                  className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-[min(18rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow)] sm:hidden"
+                >
+                  <div className="border-b border-[var(--border)] bg-[var(--elevated)]/50 px-4 py-3">
+                    <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                      Account
+                    </p>
+                    <p className="mt-1 truncate text-sm font-medium text-[var(--text)]">
+                      {userName || "Signed in"}
+                    </p>
+                    {userEmail ? (
+                      <p className="mt-0.5 truncate text-xs text-[var(--text-muted)]">
+                        {userEmail}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="p-1.5">
+                    <Link
+                      href="/coffee"
+                      role="menuitem"
+                      className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-[var(--text)] transition hover:bg-[var(--elevated)]"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--alfred-amber)]/15 text-[var(--alfred-amber)]">
+                        <Coffee className="h-4 w-4" />
+                      </span>
+                      <span>
+                        <span className="block font-medium">Buy me a coffee</span>
+                        <span className="block text-xs text-[var(--text-muted)]">
+                          Support Alfred Terminal
+                        </span>
+                      </span>
+                    </Link>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-[var(--text)] transition hover:bg-[var(--elevated)]"
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        goHomeStep();
+                      }}
+                    >
+                      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--elevated)] font-mono text-xs text-[var(--text-muted)]">
+                        01
+                      </span>
+                      <span>
+                        <span className="block font-medium">Resume step</span>
+                        <span className="block text-xs text-[var(--text-muted)]">
+                          {step === 1 ? "You’re already here" : "Back to upload"}
+                        </span>
+                      </span>
+                    </button>
+                  </div>
+                  <div className="border-t border-[var(--border)] p-1.5">
+                    <SignOutButton className="flex w-full items-center justify-center rounded-lg px-3 py-2.5 text-sm text-[var(--text-secondary)] transition hover:bg-[var(--elevated)] hover:text-[var(--text)]" />
+                  </div>
+                </div>
+              </>
+            ) : null}
           </div>
         </div>
 
@@ -579,24 +668,6 @@ export function Workspace({ userName, userEmail }: Props) {
             }}
           />
         </div>
-
-        {mobileMenuOpen ? (
-          <div className="space-y-1 border-t border-[var(--border)] px-3 py-3 sm:hidden">
-            <p className="truncate px-2 text-xs text-[var(--text-muted)]">
-              {userName || userEmail || "Signed in"}
-            </p>
-            <Link
-              href="/coffee"
-              className="block rounded-lg px-3 py-2.5 text-sm text-[var(--text-secondary)] hover:bg-[var(--elevated)]"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              Buy me a coffee
-            </Link>
-            <div className="px-2 pt-1">
-              <SignOutButton />
-            </div>
-          </div>
-        ) : null}
 
         {(busy || progress > 0) && (
           <div className="h-0.5 w-full bg-[var(--elevated)]">
