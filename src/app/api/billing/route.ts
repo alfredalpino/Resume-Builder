@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { apiError } from "@/lib/api";
-import { getEntitlements, COFFEE } from "@/lib/billing/entitlements";
+import { getEntitlements, COFFEE, razorpayConfigured } from "@/lib/billing/entitlements";
 import { createCoffeeCheckout, getTipLeaderboard } from "@/lib/billing/razorpay";
 import { fetchUsdRates } from "@/lib/billing/fx";
 
@@ -13,12 +13,13 @@ export async function GET() {
   return NextResponse.json({
     coffee: COFFEE,
     rates,
-    leaderboard: getTipLeaderboard(10),
+    leaderboard: getTipLeaderboard(20),
+    razorpayReady: razorpayConfigured(),
     entitlements: session?.user ? getEntitlements(session.user.email) : null,
   });
 }
 
-/** Coffee tips — no paid features; auth optional. */
+/** Coffee tips — auth optional. Leaderboard updates only after payment webhook. */
 export async function POST(req: Request) {
   try {
     const session = await auth();
@@ -32,6 +33,9 @@ export async function POST(req: Request) {
       amountUsd,
       body.optInLeaderboard !== false,
     );
+    if (!intent.ok) {
+      return apiError(intent.reason, 400);
+    }
     return NextResponse.json(intent);
   } catch (err) {
     return apiError(err instanceof Error ? err.message : "Checkout failed", 400);
