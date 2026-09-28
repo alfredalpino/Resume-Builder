@@ -166,9 +166,9 @@ export function Workspace({ userName, userEmail }: Props) {
               </h2>
               <p className="mt-1 max-w-2xl text-sm text-stone-600">
                 Powered by <code className="text-xs">compromise</code>,{" "}
-                <code className="text-xs">natural</code> (TF-IDF),{" "}
-                <code className="text-xs">keyword-extractor</code>, and{" "}
-                <code className="text-xs">stopword</code>. No Gemini key. No invented experience.
+                <code className="text-xs">keyword-extractor</code>,{" "}
+                <code className="text-xs">stopword</code>, plus a custom TF-IDF
+                scorer. Honest career pivots (transferables only — never invents tech).
               </p>
             </div>
             <span className="rounded-full bg-teal-700 px-3 py-1 text-xs font-semibold text-white">

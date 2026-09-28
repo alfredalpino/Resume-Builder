@@ -12,32 +12,32 @@ import type { StructuredResume } from "@/lib/schema";
 
 const styles = StyleSheet.create({
   page: {
-    paddingTop: 40,
-    paddingBottom: 40,
-    paddingHorizontal: 48,
+    paddingTop: 32,
+    paddingBottom: 32,
+    paddingHorizontal: 40,
     fontFamily: "Helvetica",
-    fontSize: 10,
-    lineHeight: 1.35,
+    fontSize: 9.5,
+    lineHeight: 1.3,
     color: "#111111",
   },
   name: {
-    fontSize: 18,
+    fontSize: 16,
     fontFamily: "Helvetica-Bold",
     textAlign: "center",
     letterSpacing: 0.4,
-    marginBottom: 4,
+    marginBottom: 3,
   },
   headline: {
-    fontSize: 10.5,
+    fontSize: 10,
     fontFamily: "Helvetica-Bold",
     textAlign: "center",
     color: "#222222",
-    marginBottom: 4,
+    marginBottom: 3,
   },
   contact: {
-    fontSize: 9,
+    fontSize: 8.5,
     textAlign: "center",
-    marginBottom: 10,
+    marginBottom: 8,
     color: "#222222",
   },
   contactLink: {
@@ -45,29 +45,29 @@ const styles = StyleSheet.create({
     textDecoration: "none",
   },
   section: {
-    fontSize: 10.5,
+    fontSize: 10,
     fontFamily: "Helvetica-Bold",
-    marginTop: 10,
-    marginBottom: 4,
+    marginTop: 8,
+    marginBottom: 3,
     textTransform: "uppercase",
-    letterSpacing: 0.6,
-    borderBottomWidth: 1.25,
+    letterSpacing: 0.5,
+    borderBottomWidth: 1,
     borderBottomColor: "#111111",
     paddingBottom: 2,
   },
   body: {
-    marginBottom: 3,
+    marginBottom: 2,
     textAlign: "justify",
   },
   jobHeader: {
     fontFamily: "Helvetica-Bold",
-    fontSize: 10,
-    marginTop: 6,
-    marginBottom: 2,
+    fontSize: 9.5,
+    marginTop: 4,
+    marginBottom: 1,
   },
   bullet: {
-    marginLeft: 10,
-    marginBottom: 2,
+    marginLeft: 8,
+    marginBottom: 1.5,
   },
   skillLabel: {
     fontFamily: "Helvetica-Bold",
@@ -76,9 +76,9 @@ const styles = StyleSheet.create({
 
 function ContactLine({ resume }: { resume: StructuredResume }) {
   const plain: string[] = [];
+  if (resume.contact.location) plain.push(resume.contact.location);
   if (resume.contact.email) plain.push(resume.contact.email);
   if (resume.contact.phone) plain.push(resume.contact.phone);
-  if (resume.contact.location) plain.push(resume.contact.location);
 
   const nodes: React.ReactNode[] = [];
   if (plain.length) {

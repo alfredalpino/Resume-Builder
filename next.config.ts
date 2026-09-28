@@ -5,7 +5,6 @@ const nextConfig: NextConfig = {
     "@react-pdf/renderer",
     "mammoth",
     "unpdf",
-    "natural",
     "compromise",
     "keyword-extractor",
     "stopword",

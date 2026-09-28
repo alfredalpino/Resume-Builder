@@ -91,7 +91,7 @@ export function scoreResume(
 
   const thinking = [
     ...analyzed.thinking,
-    `TF-IDF similarity (natural): ${similarityPct.toFixed(1)}%.`,
+    `TF-IDF similarity: ${similarityPct.toFixed(1)}%.`,
     `Matched ${hits.length}/${keywords.length} high-signal terms.`,
     hits.length
       ? `Strong overlaps: ${hits.slice(0, 8).join(", ")}.`

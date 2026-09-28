@@ -14,7 +14,7 @@ ATS-friendly resume tailor with **Google Sign-In**, locked **Smart Thinking** (n
 | Library | Role |
 |---------|------|
 | `compromise` | Nouns, topics, organizations |
-| `natural` | TF-IDF cosine similarity |
+| custom TF-IDF | Cosine similarity (no `natural` — Vercel-safe) |
 | `keyword-extractor` | Keyword candidates |
 | `stopword` | Stopword filtering |
 | `mammoth` / `unpdf` | DOCX / PDF text + links |
