@@ -38,6 +38,8 @@ export const config = {
     "/api/billing/:path*",
     "/api/payments/:path*",
     "/api/validate/:path*",
+    "/api/profile",
+    "/api/evidence",
     "/api/tips/:path*",
     "/api/fx",
   ],

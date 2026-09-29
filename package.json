@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:golden": "tsx scripts/golden-anas.ts"
+    "test:golden": "tsx scripts/golden-anas.ts",
+    "test:evidence": "tsx scripts/golden-evidence-profile.ts"
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.9.0",

@@ -35,12 +35,14 @@ import {
 } from "@/components/app-shell/progress-stepper";
 import { AnalysisPanel, type AnalysisPayload } from "@/components/analysis/AnalysisPanel";
 import { AtsRobustnessPanel } from "@/components/analysis/AtsRobustnessPanel";
+import { EvidenceGraphPanel } from "@/components/analysis/EvidenceGraphPanel";
 import { IrInspector } from "@/components/analysis/IrInspector";
 import { RoundTripPanel } from "@/components/analysis/RoundTripPanel";
 import {
   GuidedCreateForm,
   blankGuidedResume,
 } from "@/components/create/GuidedCreateForm";
+import { MasterProfileBar } from "@/components/profile/MasterProfileBar";
 import { ResumePaper, A4_WIDTH_PX } from "@/components/preview/ResumePaper";
 import {
   PreviewToolbar,
@@ -50,9 +52,24 @@ import {
   computeAtsRobustness,
   type AtsRobustnessReport,
 } from "@/lib/ats-robustness";
+import {
+  applyIntegrityGate,
+  buildClaimIntegrityReport,
+  extractEvidenceGraph,
+  type ClaimIntegrityReport,
+  type EvidenceItem,
+} from "@/lib/evidence/graph";
 import { TAILOR_INTENSITY_META, type TailorIntensity } from "@/lib/center";
 import { COMPILE_PLACEHOLDER } from "@/lib/resume/compiler";
 import type { RoundTripReport } from "@/lib/resume/roundtrip";
+import {
+  buildMasterProfile,
+  clearMasterProfileStorage,
+  loadMasterProfileFromStorage,
+  mergeApplication,
+  saveMasterProfileToStorage,
+  type MasterProfile,
+} from "@/lib/profile/master-profile";
 import {
   applyTemplate,
   DEFAULT_RESUME_STYLE,
@@ -117,6 +134,10 @@ export function Workspace({ userName, userEmail }: Props) {
   const [compileWarnings, setCompileWarnings] = useState<string[]>([]);
   const [guidedDraft, setGuidedDraft] = useState(() => blankGuidedResume());
   const [roundTrip, setRoundTrip] = useState<RoundTripReport | null>(null);
+  const [masterProfile, setMasterProfile] = useState<MasterProfile | null>(null);
+  const [evidence, setEvidence] = useState<EvidenceItem[]>([]);
+  const [integrityReport, setIntegrityReport] = useState<ClaimIntegrityReport | null>(null);
+  const [integrityMode, setIntegrityMode] = useState(false);
   const [step, setStep] = useState<WorkflowStepId>(1);
   const [unlockedThrough, setUnlockedThrough] = useState<WorkflowStepId>(1);
   const [humanAnalysis, setHumanAnalysis] = useState<AnalysisPayload | null>(null);
@@ -213,24 +234,36 @@ export function Workspace({ userName, userEmail }: Props) {
     }
   }, [hasSource, hasJd, unlockedThrough]);
 
-  // Restore draft
+  // Restore draft + master profile
   useEffect(() => {
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
-      if (!raw) return;
-      const d = JSON.parse(raw) as {
-        jobDescription?: string;
-        intensity?: TailorIntensity;
-        style?: ResumeStyle;
-      };
-      if (d.jobDescription) setJobDescription(d.jobDescription);
-      if (d.intensity) setIntensity(d.intensity);
-      if (d.style) setStyle({ ...DEFAULT_RESUME_STYLE, ...d.style });
-      setDraftStatus("Draft restored");
+      if (raw) {
+        const d = JSON.parse(raw) as {
+          jobDescription?: string;
+          intensity?: TailorIntensity;
+          style?: ResumeStyle;
+        };
+        if (d.jobDescription) setJobDescription(d.jobDescription);
+        if (d.intensity) setIntensity(d.intensity);
+        if (d.style) setStyle({ ...DEFAULT_RESUME_STYLE, ...d.style });
+        setDraftStatus("Draft restored");
+      }
     } catch {
       /* ignore */
     }
+    const profile = loadMasterProfileFromStorage();
+    if (profile) {
+      setMasterProfile(profile);
+      setIntegrityMode(profile.integrityModeDefault);
+      setEvidence(profile.evidence);
+    }
   }, []);
+
+  useEffect(() => {
+    if (!hasSource) return;
+    setEvidence(extractEvidenceGraph(sourceResume));
+  }, [hasSource, sourceResume]);
 
   // Persist draft
   useEffect(() => {
@@ -527,7 +560,17 @@ export function Workspace({ userName, userEmail }: Props) {
         humanAnalysis?: AnalysisPayload;
         plan?: AnalysisPayload;
       };
-      setResume(data.resume);
+
+      let nextResume = data.resume;
+      let report = buildClaimIntegrityReport(sourceResume, nextResume);
+      if (integrityMode) {
+        const gated = applyIntegrityGate(sourceResume, nextResume);
+        nextResume = gated.resume;
+        report = gated.report;
+      }
+      setResume(nextResume);
+      setIntegrityReport(report);
+      setEvidence(extractEvidenceGraph(sourceResume));
       setScore(data.score);
       if (data.atsRobustness) setAtsRobustness(data.atsRobustness);
       setAppliedIntensity(data.intensity || nextIntensity);
@@ -537,6 +580,35 @@ export function Workspace({ userName, userEmail }: Props) {
           ...(data.plan || {}),
         });
       }
+
+      // Application history on master profile
+      const baseProfile =
+        masterProfile ||
+        buildMasterProfile(sourceResume, { integrityModeDefault: integrityMode });
+      const withApp = mergeApplication(
+        {
+          ...baseProfile,
+          resume: sourceResume,
+          evidence: extractEvidenceGraph(sourceResume),
+          integrityModeDefault: integrityMode,
+        },
+        {
+          targetRole:
+            data.humanAnalysis?.targetRole ||
+            data.plan?.targetRole ||
+            nextResume.headline ||
+            "Role",
+          companyHint: "",
+          jdSnippet: jobDescription.slice(0, 280),
+          intensity: data.intensity || nextIntensity,
+          matchRate: data.score?.matchRate,
+          atsRobustness: data.atsRobustness?.overall,
+          integrityScore: report.integrityScore,
+        },
+      );
+      setMasterProfile(withApp);
+      saveMasterProfileToStorage(withApp);
+
       setViewMode("tailored");
       setCompareSide("tailored");
       unlock(5);
@@ -663,6 +735,80 @@ export function Workspace({ userName, userEmail }: Props) {
       setRoundTrip(data.report);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Round-trip check failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function saveMasterProfileLocal() {
+    if (!hasSource) {
+      setError("Import or create a resume before saving a master profile.");
+      return;
+    }
+    const profile = buildMasterProfile(sourceResume, {
+      applications: masterProfile?.applications || [],
+      integrityModeDefault: integrityMode,
+    });
+    setMasterProfile(profile);
+    setEvidence(profile.evidence);
+    saveMasterProfileToStorage(profile);
+    setDraftStatus("Master profile saved");
+  }
+
+  function loadMasterProfileLocal() {
+    const profile = masterProfile || loadMasterProfileFromStorage();
+    if (!profile) {
+      setError("No master profile saved yet.");
+      return;
+    }
+    adoptParsed(profile.resume);
+    setMasterProfile(profile);
+    setEvidence(profile.evidence);
+    setIntegrityMode(profile.integrityModeDefault);
+    setFileName("master-profile");
+    setDraftStatus("Master profile loaded");
+  }
+
+  function clearMasterProfileLocal() {
+    clearMasterProfileStorage();
+    setMasterProfile(null);
+    void fetch("/api/profile", { method: "DELETE" }).catch(() => null);
+    setDraftStatus("Master profile deleted");
+  }
+
+  async function syncMasterProfileCloud() {
+    if (!masterProfile) {
+      setError("Save a master profile first.");
+      return;
+    }
+    setBusy("profile");
+    try {
+      const res = await fetch("/api/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile: masterProfile }),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      setDraftStatus("Master profile synced");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Cloud sync failed (sign in required).");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function enforceIntegrityOnResume() {
+    if (!hasTailored) return;
+    setBusy("integrity");
+    try {
+      const gated = applyIntegrityGate(sourceResume, resume);
+      setResume(gated.resume);
+      setIntegrityReport(gated.report);
+      setDraftStatus(
+        gated.removed
+          ? `Removed ${gated.removed} unsupported claim(s)`
+          : "No unsupported claims to strip",
+      );
     } finally {
       setBusy(null);
     }
@@ -1073,26 +1219,37 @@ export function Workspace({ userName, userEmail }: Props) {
           ) : null}
 
           {hasSource && step <= 2 ? (
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
-              <FileText className="h-5 w-5 text-[var(--alfred-amber)]" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{fileName || "Resume"}</p>
-                <p className="text-xs text-[var(--text-muted)]">
-                  {wordCount} words · {skillCount} skills · {sourceResume.experience.length} roles
-                </p>
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+                <FileText className="h-5 w-5 text-[var(--alfred-amber)]" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{fileName || "Resume"}</p>
+                  <p className="text-xs text-[var(--text-muted)]">
+                    {wordCount} words · {skillCount} skills · {sourceResume.experience.length} roles
+                    {evidence.length ? ` · ${evidence.length} evidence` : ""}
+                  </p>
+                </div>
+                <span className="inline-flex items-center gap-1 rounded-full bg-[var(--success)]/15 px-2.5 py-1 text-xs text-[var(--success)]">
+                  <Check className="h-3 w-3" /> Parsed
+                </span>
+                <label className="cursor-pointer text-xs text-[var(--text-secondary)] underline-offset-2 hover:underline">
+                  Replace
+                  <input
+                    type="file"
+                    accept=".pdf,.docx,.txt,.md,.markdown,application/pdf"
+                    className="hidden"
+                    onChange={(e) => onFileChange(e.target.files?.[0] || null)}
+                  />
+                </label>
               </div>
-              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--success)]/15 px-2.5 py-1 text-xs text-[var(--success)]">
-                <Check className="h-3 w-3" /> Parsed
-              </span>
-              <label className="cursor-pointer text-xs text-[var(--text-secondary)] underline-offset-2 hover:underline">
-                Replace
-                <input
-                  type="file"
-                  accept=".pdf,.docx,.txt,.md,.markdown,application/pdf"
-                  className="hidden"
-                  onChange={(e) => onFileChange(e.target.files?.[0] || null)}
-                />
-              </label>
+              <MasterProfileBar
+                profile={masterProfile}
+                busy={busy === "profile"}
+                onSave={saveMasterProfileLocal}
+                onLoad={loadMasterProfileLocal}
+                onClear={clearMasterProfileLocal}
+                onSync={() => void syncMasterProfileCloud()}
+              />
             </div>
           ) : null}
 
@@ -1175,6 +1332,14 @@ export function Workspace({ userName, userEmail }: Props) {
               </div>
 
               <div className="mt-5 space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={integrityMode}
+                    onChange={(e) => setIntegrityMode(e.target.checked)}
+                  />
+                  Integrity mode — strip claims not evidenced on your source resume
+                </label>
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-[var(--text-muted)]">
                     Style template
@@ -1325,6 +1490,14 @@ export function Workspace({ userName, userEmail }: Props) {
                   </div>
                 ) : null}
                 <div className="mt-4 max-w-md space-y-3">
+                  <EvidenceGraphPanel
+                    evidence={evidence}
+                    report={integrityReport}
+                    integrityMode={integrityMode}
+                    onToggleIntegrity={setIntegrityMode}
+                    onEnforce={enforceIntegrityOnResume}
+                    busy={busy === "integrity"}
+                  />
                   <RoundTripPanel
                     report={roundTrip}
                     busy={busy === "roundtrip"}
@@ -1336,6 +1509,9 @@ export function Workspace({ userName, userEmail }: Props) {
                       setResume(next);
                       setAtsRobustness(null);
                       setRoundTrip(null);
+                      setIntegrityReport(
+                        buildClaimIntegrityReport(sourceResume, next),
+                      );
                     }}
                   />
                 </div>
