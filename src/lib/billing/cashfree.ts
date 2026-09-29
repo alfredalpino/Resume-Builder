@@ -141,9 +141,33 @@ export async function createCashfreeCoffeeOrder(input: {
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       console.error("Cashfree create order failed", res.status, text);
+      let cashfreeMessage = "";
+      try {
+        const errJson = JSON.parse(text) as { message?: string; code?: string };
+        cashfreeMessage = (errJson.message || "").trim();
+      } catch {
+        /* ignore */
+      }
+      // Common activation / KYC gate — surface clearly to the merchant
+      if (/transactions are not enabled/i.test(cashfreeMessage)) {
+        return {
+          ok: false,
+          reason:
+            "Cashfree says transactions are not enabled on this merchant account yet. Finish PG activation / KYC in the Cashfree dashboard (or use sandbox keys + CASHFREE_ENV=sandbox while waiting).",
+        };
+      }
+      if (/authentication|unauthorized|invalid.*client/i.test(cashfreeMessage)) {
+        return {
+          ok: false,
+          reason:
+            "Cashfree rejected the App ID / Secret Key. Check CASHFREE_APP_ID, CASHFREE_SECRET_KEY, and that CASHFREE_ENV matches the key type (sandbox vs production).",
+        };
+      }
       return {
         ok: false,
-        reason: "Couldn’t start checkout. Try again in a moment.",
+        reason: cashfreeMessage
+          ? `Cashfree: ${cashfreeMessage}`
+          : "Couldn’t start checkout. Try again in a moment.",
       };
     }
 
