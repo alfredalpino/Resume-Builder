@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { apiError, requireSession } from "@/lib/api";
+import { computeAtsRobustness } from "@/lib/ats-robustness";
 import { applyIntensityAlignmentFloor, scoreResume } from "@/lib/ats-score";
 import { runAlfredPipeline } from "@/lib/alfred/pipeline";
 import type { TailorIntensity } from "@/lib/local-tailor";
@@ -52,12 +53,20 @@ export async function POST(req: Request) {
       score = applyIntensityAlignmentFloor(baseline.matchRate, score, intensity);
     }
 
+    const atsRobustness = computeAtsRobustness({
+      resume: tailored,
+      jobDescription,
+      analysis: result.analysis,
+      source,
+    });
+
     return NextResponse.json({
       resume: tailored,
       score: {
         ...score,
         thinking: score.thinking || [],
       },
+      atsRobustness,
       baselineMatchRate: baseline.matchRate,
       engine: "alfred",
       writer: result.writer,

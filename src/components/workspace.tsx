@@ -34,11 +34,16 @@ import {
   type WorkflowStepId,
 } from "@/components/app-shell/progress-stepper";
 import { AnalysisPanel, type AnalysisPayload } from "@/components/analysis/AnalysisPanel";
+import { AtsRobustnessPanel } from "@/components/analysis/AtsRobustnessPanel";
 import { ResumePaper, A4_WIDTH_PX } from "@/components/preview/ResumePaper";
 import {
   PreviewToolbar,
   type PreviewZoom,
 } from "@/components/preview/PreviewToolbar";
+import {
+  computeAtsRobustness,
+  type AtsRobustnessReport,
+} from "@/lib/ats-robustness";
 import { TAILOR_INTENSITY_META, type TailorIntensity } from "@/lib/center";
 import { DEFAULT_RESUME_STYLE, type ResumeStyle } from "@/lib/style";
 
@@ -81,6 +86,7 @@ export function Workspace({ userName, userEmail }: Props) {
   const [sourceResume, setSourceResume] = useState<StructuredResume>(emptyResume());
   const [resume, setResume] = useState<StructuredResume>(emptyResume());
   const [score, setScore] = useState<AtsScore | null>(null);
+  const [atsRobustness, setAtsRobustness] = useState<AtsRobustnessReport | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -126,6 +132,17 @@ export function Workspace({ userName, userEmail }: Props) {
   const paperScale = zoom === "fit" ? fitScale : zoom;
   const recommended = recommendIntensity(humanAnalysis?.distance);
 
+  const liveAtsRobustness = useMemo(() => {
+    if (!hasTailored && !hasSource) return null;
+    return computeAtsRobustness({
+      resume: hasTailored ? resume : sourceResume,
+      jobDescription,
+      source: hasSource ? sourceResume : null,
+    });
+  }, [hasTailored, hasSource, resume, sourceResume, jobDescription]);
+
+  const displayedAts = atsRobustness ?? liveAtsRobustness;
+
   function unlock(to: WorkflowStepId) {
     setUnlockedThrough((u) => (to > u ? to : u));
   }
@@ -141,15 +158,23 @@ export function Workspace({ userName, userEmail }: Props) {
       const res = await fetch("/api/score", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resume: r, jobDescription: jd }),
+        body: JSON.stringify({
+          resume: r,
+          jobDescription: jd,
+          source: sourceResume,
+        }),
       });
       if (!res.ok) return;
-      const data = (await res.json()) as { score: AtsScore };
+      const data = (await res.json()) as {
+        score: AtsScore;
+        atsRobustness?: AtsRobustnessReport;
+      };
       setScore(data.score);
+      if (data.atsRobustness) setAtsRobustness(data.atsRobustness);
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [sourceResume]);
 
   useEffect(() => {
     // Keep tailor API alignment bands — don't overwrite with raw live score
@@ -292,6 +317,7 @@ export function Workspace({ userName, userEmail }: Props) {
     setSourceResume(structuredClone(parsed));
     setResume(parsed);
     setScore(null);
+    setAtsRobustness(null);
     setAppliedIntensity(null);
     setCoverLetter("");
     setHumanAnalysis(null);
@@ -387,10 +413,12 @@ export function Workspace({ userName, userEmail }: Props) {
       if (!res.ok) throw new Error(await readError(res));
       const data = (await res.json()) as {
         score: AtsScore;
+        atsRobustness?: AtsRobustnessReport;
         humanAnalysis?: AnalysisPayload;
         plan?: AnalysisPayload;
       };
       setScore(data.score);
+      if (data.atsRobustness) setAtsRobustness(data.atsRobustness);
       const ha = data.humanAnalysis || null;
       if (ha && data.plan) {
         setHumanAnalysis({ ...ha, ...data.plan });
@@ -439,12 +467,14 @@ export function Workspace({ userName, userEmail }: Props) {
       const data = (await res.json()) as {
         resume: StructuredResume;
         score: AtsScore;
+        atsRobustness?: AtsRobustnessReport;
         intensity?: TailorIntensity;
         humanAnalysis?: AnalysisPayload;
         plan?: AnalysisPayload;
       };
       setResume(data.resume);
       setScore(data.score);
+      if (data.atsRobustness) setAtsRobustness(data.atsRobustness);
       setAppliedIntensity(data.intensity || nextIntensity);
       if (data.humanAnalysis) {
         setHumanAnalysis({
@@ -536,6 +566,7 @@ export function Workspace({ userName, userEmail }: Props) {
   function resetToOriginal() {
     setResume(structuredClone(sourceResume));
     setAppliedIntensity(null);
+    setAtsRobustness(null);
     setCoverLetter("");
     setError(null);
     setViewMode("original");
@@ -913,6 +944,7 @@ export function Workspace({ userName, userEmail }: Props) {
           {step === 3 && unlockedThrough >= 3 && (humanAnalysis || score) ? (
             <AnalysisPanel
               score={score}
+              atsOverall={displayedAts?.overall}
               analysis={humanAnalysis}
               recommended={recommended}
               showContinue={unlockedThrough >= 4}
@@ -1054,8 +1086,25 @@ export function Workspace({ userName, userEmail }: Props) {
                       {score?.matchRate ?? "—"}%
                     </strong>
                   </span>
-                  <span className="text-[var(--success)]">ATS-friendly structure ✓ Ready</span>
+                  <span>
+                    ATS score{" "}
+                    <strong className="text-[var(--alfred-amber)]">
+                      {displayedAts?.overall ?? "—"}
+                    </strong>
+                    <span className="text-[var(--text-muted)]"> / 100</span>
+                  </span>
+                  {displayedAts?.status === "excellent" ||
+                  displayedAts?.status === "strong" ? (
+                    <span className="text-[var(--success)]">
+                      ATS-ready structure ✓
+                    </span>
+                  ) : null}
                 </div>
+                {displayedAts ? (
+                  <div className="mt-5 max-w-md">
+                    <AtsRobustnessPanel report={displayedAts} />
+                  </div>
+                ) : null}
                 <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                   <button
                     type="button"

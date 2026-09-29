@@ -45,12 +45,14 @@ function Meter({ label, value }: { label: string; value: number }) {
 
 export function AnalysisPanel({
   score,
+  atsOverall,
   analysis,
   recommended,
   onContinue,
   showContinue,
 }: {
   score: AtsScore | null;
+  atsOverall?: number | null;
   analysis: AnalysisPayload | null;
   recommended: TailorIntensity;
   onContinue: () => void;
@@ -125,6 +127,17 @@ export function AnalysisPanel({
           <Meter label="Keywords" value={score?.keywordScore ?? 0} />
           <Meter label="Format" value={score?.formatScore ?? 0} />
         </div>
+        {typeof atsOverall === "number" ? (
+          <p className="mt-4 text-xs text-[var(--text-secondary)]">
+            ATS Robustness{" "}
+            <strong className="tabular-nums text-[var(--text)]">{atsOverall}</strong>
+            <span className="text-[var(--text-muted)]"> / 100</span>
+            <span className="text-[var(--text-muted)]">
+              {" "}
+              · parseability, structure, coverage
+            </span>
+          </p>
+        ) : null}
       </div>
 
       <div className="mt-5 space-y-4">
