@@ -33,13 +33,21 @@ function appOrigin(): string {
   ).replace(/\/$/, "");
 }
 
+function cashfreeSecret(): string {
+  return (
+    process.env.CASHFREE_SECRET_KEY?.trim() ||
+    process.env.CASHFREE_APP_SECRET_KEY?.trim() ||
+    ""
+  );
+}
+
 function authHeaders(): HeadersInit {
   return {
     "Content-Type": "application/json",
     Accept: "application/json",
     "x-api-version": API_VERSION,
     "x-client-id": process.env.CASHFREE_APP_ID!.trim(),
-    "x-client-secret": process.env.CASHFREE_SECRET_KEY!.trim(),
+    "x-client-secret": cashfreeSecret(),
   };
 }
 
@@ -224,7 +232,7 @@ export function verifyCashfreeWebhook(
   signature: string | null,
   timestamp: string | null,
 ): { ok: boolean; reason: string } {
-  const secret = process.env.CASHFREE_SECRET_KEY?.trim();
+  const secret = cashfreeSecret();
   if (!secret) return { ok: false, reason: "CASHFREE_SECRET_KEY not set" };
   if (!signature || !timestamp) {
     return { ok: false, reason: "Missing webhook signature or timestamp" };

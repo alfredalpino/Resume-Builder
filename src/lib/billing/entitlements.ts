@@ -23,9 +23,10 @@ export function razorpayConfigured(): boolean {
 }
 
 export function cashfreeConfigured(): boolean {
-  return Boolean(
-    process.env.CASHFREE_APP_ID?.trim() && process.env.CASHFREE_SECRET_KEY?.trim(),
-  );
+  const secret =
+    process.env.CASHFREE_SECRET_KEY?.trim() ||
+    process.env.CASHFREE_APP_SECRET_KEY?.trim();
+  return Boolean(process.env.CASHFREE_APP_ID?.trim() && secret);
 }
 
 function hasAiWriterKey(): boolean {
