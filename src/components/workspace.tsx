@@ -35,6 +35,10 @@ import {
 } from "@/components/app-shell/progress-stepper";
 import { AnalysisPanel, type AnalysisPayload } from "@/components/analysis/AnalysisPanel";
 import { AtsRobustnessPanel } from "@/components/analysis/AtsRobustnessPanel";
+import {
+  GuidedCreateForm,
+  blankGuidedResume,
+} from "@/components/create/GuidedCreateForm";
 import { ResumePaper, A4_WIDTH_PX } from "@/components/preview/ResumePaper";
 import {
   PreviewToolbar,
@@ -100,8 +104,10 @@ export function Workspace({ userName, userEmail }: Props) {
   const [copied, setCopied] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
   const [entryMode, setEntryMode] = useState<"upload" | "create">("upload");
+  const [createSubMode, setCreateSubMode] = useState<"notes" | "form">("notes");
   const [compileNotes, setCompileNotes] = useState("");
   const [compileWarnings, setCompileWarnings] = useState<string[]>([]);
+  const [guidedDraft, setGuidedDraft] = useState(() => blankGuidedResume());
   const [step, setStep] = useState<WorkflowStepId>(1);
   const [unlockedThrough, setUnlockedThrough] = useState<WorkflowStepId>(1);
   const [humanAnalysis, setHumanAnalysis] = useState<AnalysisPayload | null>(null);
@@ -946,49 +952,93 @@ export function Workspace({ userName, userEmail }: Props) {
                 </>
               ) : (
                 <div className="mt-5 space-y-3">
-                  <p className="text-sm text-[var(--text-secondary)]">
-                    Describe yourself in plain language. Alfred compiles it into structured JSON,
-                    then you can preview and download a PDF.
-                  </p>
-                  <textarea
-                    value={compileNotes}
-                    onChange={(e) => setCompileNotes(e.target.value)}
-                    rows={16}
-                    className="w-full rounded-xl border border-[var(--border)] bg-[var(--elevated)] px-3 py-3 font-mono text-xs leading-relaxed outline-none focus:border-[var(--alfred-amber)]"
-                    placeholder={COMPILE_PLACEHOLDER}
-                  />
-                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                    <button
-                      type="button"
-                      disabled={!!busy}
-                      onClick={() => compileFromNotes(false)}
-                      className="h-11 rounded-lg bg-[var(--alfred-amber)] px-5 text-sm font-semibold text-[var(--bg)] disabled:opacity-50"
-                    >
-                      {busy === "compile" ? "Compiling…" : "Compile resume"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!!busy}
-                      onClick={() => compileFromNotes(true)}
-                      className="h-11 rounded-lg border border-[var(--border)] px-4 text-sm disabled:opacity-50"
-                    >
-                      Compile with AI
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCompileNotes(COMPILE_PLACEHOLDER)}
-                      className="h-11 rounded-lg border border-[var(--border)] px-4 text-sm text-[var(--text-secondary)]"
-                    >
-                      Load example
-                    </button>
+                  <div className="flex gap-2">
+                    {(
+                      [
+                        { id: "notes" as const, label: "Notes" },
+                        { id: "form" as const, label: "Guided form" },
+                      ] as const
+                    ).map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setCreateSubMode(t.id)}
+                        className={`rounded-md px-2.5 py-1.5 text-xs font-medium ${
+                          createSubMode === t.id
+                            ? "bg-[var(--elevated)] text-[var(--text)] ring-1 ring-[var(--border)]"
+                            : "text-[var(--text-muted)]"
+                        }`}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
                   </div>
-                  {compileWarnings.length ? (
-                    <ul className="space-y-1 text-xs text-[var(--warning)]">
-                      {compileWarnings.map((w) => (
-                        <li key={w}>{w}</li>
-                      ))}
-                    </ul>
-                  ) : null}
+
+                  {createSubMode === "notes" ? (
+                    <>
+                      <p className="text-sm text-[var(--text-secondary)]">
+                        Describe yourself in plain language. Alfred compiles it into structured JSON,
+                        then you can preview and download a PDF.
+                      </p>
+                      <textarea
+                        value={compileNotes}
+                        onChange={(e) => setCompileNotes(e.target.value)}
+                        rows={16}
+                        className="w-full rounded-xl border border-[var(--border)] bg-[var(--elevated)] px-3 py-3 font-mono text-xs leading-relaxed outline-none focus:border-[var(--alfred-amber)]"
+                        placeholder={COMPILE_PLACEHOLDER}
+                      />
+                      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                        <button
+                          type="button"
+                          disabled={!!busy}
+                          onClick={() => compileFromNotes(false)}
+                          className="h-11 rounded-lg bg-[var(--alfred-amber)] px-5 text-sm font-semibold text-[var(--bg)] disabled:opacity-50"
+                        >
+                          {busy === "compile" ? "Compiling…" : "Compile resume"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!!busy}
+                          onClick={() => compileFromNotes(true)}
+                          className="h-11 rounded-lg border border-[var(--border)] px-4 text-sm disabled:opacity-50"
+                        >
+                          Compile with AI
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCompileNotes(COMPILE_PLACEHOLDER)}
+                          className="h-11 rounded-lg border border-[var(--border)] px-4 text-sm text-[var(--text-secondary)]"
+                        >
+                          Load example
+                        </button>
+                      </div>
+                      {compileWarnings.length ? (
+                        <ul className="space-y-1 text-xs text-[var(--warning)]">
+                          {compileWarnings.map((w) => (
+                            <li key={w}>{w}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </>
+                  ) : (
+                    <GuidedCreateForm
+                      value={guidedDraft}
+                      onChange={(next) => {
+                        setGuidedDraft(next);
+                        // Live preview while drafting
+                        setResume(next);
+                        setSourceResume(structuredClone(next));
+                        setViewMode("original");
+                        setFileName("guided-draft");
+                      }}
+                      onUse={() => {
+                        adoptParsed(guidedDraft);
+                        setFileName("guided-resume");
+                        setCompileWarnings([]);
+                        setMobileTab(isNarrow ? "preview" : "workspace");
+                      }}
+                    />
+                  )}
                 </div>
               )}
             </section>
