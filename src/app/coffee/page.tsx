@@ -38,7 +38,7 @@ export default function CoffeePage() {
           Buy me a coffee
         </h1>
         <p className="mt-3 text-[var(--text-secondary)]">
-          Alfred Terminal is free. If it helped you, a coffee starting at ${COFFEE.tipMinUsd} means a
+          Alfred Terminal is free. If it helped you, a coffee starting at ₹{COFFEE.tipMinInr} means a
           lot.
         </p>
         <CoffeeClient />

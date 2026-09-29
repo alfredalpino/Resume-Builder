@@ -1,42 +1,16 @@
 /**
- * Buy-me-a-coffee tips via Razorpay (when configured).
- * Leaderboard only lists tips after payment is confirmed (webhook).
+ * Legacy Razorpay coffee tips (optional fallback).
+ * Prefer Cashfree — see src/lib/billing/cashfree.ts
  */
-
 import crypto from "crypto";
 import { COFFEE, razorpayConfigured } from "@/lib/billing/entitlements";
+import {
+  getTipLeaderboard,
+  recordConfirmedTip,
+  type TipEntry,
+} from "@/lib/billing/tips-store";
 
-export type TipEntry = {
-  displayName: string;
-  amountUsd: number;
-  createdAt: string;
-  paymentId?: string;
-};
-
-const tipStore: TipEntry[] = [];
-
-export function getTipLeaderboard(limit = 10): TipEntry[] {
-  return [...tipStore].sort((a, b) => b.amountUsd - a.amountUsd).slice(0, limit);
-}
-
-/** Only call after a verified successful payment. */
-export function recordConfirmedTip(
-  displayName: string,
-  amountUsd: number,
-  paymentId?: string,
-): TipEntry {
-  if (paymentId && tipStore.some((t) => t.paymentId === paymentId)) {
-    return tipStore.find((t) => t.paymentId === paymentId)!;
-  }
-  const entry: TipEntry = {
-    displayName: displayName.slice(0, 40) || "Anonymous",
-    amountUsd: Math.max(COFFEE.tipMinUsd, Math.round(amountUsd * 100) / 100),
-    createdAt: new Date().toISOString(),
-    paymentId,
-  };
-  tipStore.push(entry);
-  return entry;
-}
+export { getTipLeaderboard, recordConfirmedTip, type TipEntry };
 
 export type CheckoutIntent =
   | { ok: false; reason: string }
@@ -59,7 +33,6 @@ export async function createCoffeeCheckout(
   const name = displayName.slice(0, 40) || "Anonymous";
 
   if (!razorpayConfigured()) {
-    // Never write to leaderboard without a confirmed payment.
     return {
       ok: true,
       mode: "stub",
@@ -72,7 +45,7 @@ export async function createCoffeeCheckout(
 
   const keyId = process.env.RAZORPAY_KEY_ID!.trim();
   const keySecret = process.env.RAZORPAY_KEY_SECRET!.trim();
-  const amountPaise = Math.round(amount * 100); // USD cents if account is USD; merchant may use INR
+  const amountPaise = Math.round(amount * 100);
 
   try {
     const authHeader = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
@@ -112,7 +85,8 @@ export async function createCoffeeCheckout(
       amountUsd: amount,
       orderId: order.id,
       razorpayKeyId: keyId,
-      message: "Complete payment in the checkout window. You’ll appear on Kind souls after it succeeds.",
+      message:
+        "Complete payment in the checkout window. You’ll appear on Kind souls after it succeeds.",
     };
   } catch (err) {
     console.error("Razorpay order error", err);
@@ -173,7 +147,6 @@ type RazorpayWebhookEvent = {
   };
 };
 
-/** Apply a verified webhook — record tip only on captured/paid events. */
 export function applyRazorpayWebhookEvent(event: RazorpayWebhookEvent): {
   recorded: boolean;
   entry?: TipEntry;
@@ -193,7 +166,13 @@ export function applyRazorpayWebhookEvent(event: RazorpayWebhookEvent): {
     if (!Number.isFinite(amountUsd) || amountUsd < COFFEE.tipMinUsd) {
       return { recorded: false };
     }
-    const entry = recordConfirmedTip(name, amountUsd, payment.id);
+    const entry = recordConfirmedTip({
+      displayName: name,
+      amountInr: Math.round(amountUsd * 83),
+      amountUsd,
+      paymentId: payment.id,
+      provider: "razorpay",
+    });
     return { recorded: true, entry };
   }
 
@@ -208,7 +187,13 @@ export function applyRazorpayWebhookEvent(event: RazorpayWebhookEvent): {
     if (!Number.isFinite(amountUsd) || amountUsd < COFFEE.tipMinUsd) {
       return { recorded: false };
     }
-    const entry = recordConfirmedTip(name, amountUsd, order.id);
+    const entry = recordConfirmedTip({
+      displayName: name,
+      amountInr: Math.round(amountUsd * 83),
+      amountUsd,
+      paymentId: order.id,
+      provider: "razorpay",
+    });
     return { recorded: true, entry };
   }
 

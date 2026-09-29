@@ -16,6 +16,7 @@ export default auth((req) => {
     pathname.startsWith("/api/tips/leaderboard") ||
     pathname.startsWith("/api/billing/webhook") ||
     pathname === "/api/billing" ||
+    pathname.startsWith("/api/payments/") ||
     pathname.startsWith("/api/fx");
 
   if (pathname.startsWith("/api/") && !publicApi && !isAuthed) {
@@ -35,6 +36,7 @@ export const config = {
     "/api/export/:path*",
     "/api/cover-letter/:path*",
     "/api/billing/:path*",
+    "/api/payments/:path*",
     "/api/tips/:path*",
     "/api/fx",
   ],

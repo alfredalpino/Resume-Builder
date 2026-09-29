@@ -1,6 +1,6 @@
 /**
  * Everything is free for everyone.
- * Optional "Buy me a coffee" tips start at $1 USD — never gates features.
+ * Optional "Buy me a coffee" tips via Cashfree (INR) — never gates features.
  */
 
 export type Entitlements = {
@@ -13,11 +13,18 @@ export type Entitlements = {
   docxExport: boolean;
   tipsEnabled: boolean;
   razorpayReady: boolean;
+  cashfreeReady: boolean;
 };
 
 export function razorpayConfigured(): boolean {
   return Boolean(
     process.env.RAZORPAY_KEY_ID?.trim() && process.env.RAZORPAY_KEY_SECRET?.trim(),
+  );
+}
+
+export function cashfreeConfigured(): boolean {
+  return Boolean(
+    process.env.CASHFREE_APP_ID?.trim() && process.env.CASHFREE_SECRET_KEY?.trim(),
   );
 }
 
@@ -38,12 +45,18 @@ export function getEntitlements(_userEmail?: string | null): Entitlements {
     docxExport: true,
     tipsEnabled: true,
     razorpayReady: razorpayConfigured(),
+    cashfreeReady: cashfreeConfigured(),
   };
 }
 
 export const COFFEE = {
+  /** Cashfree primary — INR */
+  tipMinInr: 50,
+  tipMaxInr: 50_000,
+  currency: "INR",
+  presetsInr: [50, 100, 250, 500] as const,
+  /** Legacy USD floor (Razorpay path) */
   tipMinUsd: 1,
-  currency: "USD",
   /** Currencies to show live equivalents for (Frankfurter-supported). */
   displayCurrencies: ["INR", "EUR", "GBP", "AED", "CAD", "AUD", "SGD", "JPY"] as const,
 } as const;

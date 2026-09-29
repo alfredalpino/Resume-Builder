@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { apiError } from "@/lib/api";
-import { getEntitlements, COFFEE, razorpayConfigured } from "@/lib/billing/entitlements";
-import { createCoffeeCheckout, getTipLeaderboard } from "@/lib/billing/razorpay";
+import {
+  getEntitlements,
+  COFFEE,
+  cashfreeConfigured,
+  razorpayConfigured,
+} from "@/lib/billing/entitlements";
+import { createCashfreeCoffeeOrder, getTipLeaderboard } from "@/lib/billing/cashfree";
 import { fetchUsdRates } from "@/lib/billing/fx";
 
 export const runtime = "nodejs";
@@ -14,25 +19,44 @@ export async function GET() {
     coffee: COFFEE,
     rates,
     leaderboard: getTipLeaderboard(20),
+    cashfreeReady: cashfreeConfigured(),
     razorpayReady: razorpayConfigured(),
     entitlements: session?.user ? getEntitlements(session.user.email) : null,
   });
 }
 
-/** Coffee tips — auth optional. Leaderboard updates only after payment webhook. */
+/**
+ * Coffee tips — prefers Cashfree (amountInr). Auth optional.
+ * Leaderboard updates only after payment webhook / verify.
+ */
 export async function POST(req: Request) {
   try {
     const session = await auth();
     const body = await req.json();
-    const amountUsd = Number(body.amountUsd);
-    if (!Number.isFinite(amountUsd) || amountUsd < COFFEE.tipMinUsd) {
-      return apiError(`Minimum is $${COFFEE.tipMinUsd}`);
+
+    // Prefer INR (Cashfree). Fall back to USD→INR approx for old clients.
+    let amountInr = Number(body.amountInr);
+    if (!Number.isFinite(amountInr) && Number.isFinite(Number(body.amountUsd))) {
+      amountInr = Math.round(Number(body.amountUsd) * 83);
     }
-    const intent = await createCoffeeCheckout(
-      String(body.displayName || session?.user?.name || "Anonymous"),
-      amountUsd,
-      body.optInLeaderboard !== false,
-    );
+
+    if (!Number.isFinite(amountInr) || amountInr < COFFEE.tipMinInr) {
+      return apiError(`Minimum is ₹${COFFEE.tipMinInr}`);
+    }
+    if (amountInr > COFFEE.tipMaxInr) {
+      return apiError(`Maximum is ₹${COFFEE.tipMaxInr}`);
+    }
+
+    const intent = await createCashfreeCoffeeOrder({
+      displayName: String(body.displayName || session?.user?.name || "Anonymous"),
+      amountInr,
+      customerEmail:
+        typeof body.email === "string"
+          ? body.email
+          : session?.user?.email || undefined,
+      customerPhone: typeof body.phone === "string" ? body.phone : undefined,
+    });
+
     if (!intent.ok) {
       return apiError(intent.reason, 400);
     }
