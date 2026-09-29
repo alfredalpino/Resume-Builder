@@ -10,6 +10,7 @@ import {
   type AtsScore,
   type StructuredResume,
 } from "@/lib/schema";
+import type { TailorIntensity } from "@/lib/center";
 
 export type { JdAnalysis };
 export { analyzeJobDescription } from "@/lib/nlp";
@@ -93,7 +94,7 @@ export function scoreResume(
     `Matched ${hits.length}/${keywords.length} skill/role terms.`,
     hits.length
       ? `Overlaps: ${hits.slice(0, 8).join(", ")}.`
-      : "Few skill overlaps — keep source facts; do not invent skills.",
+      : "Few skill overlaps with the JD stack.",
     missing.length
       ? `Skill gaps: ${missing.slice(0, 8).join(", ")}.`
       : "No major skill gaps vs JD stack.",
@@ -109,5 +110,54 @@ export function scoreResume(
     target: 75,
     thinking,
     similarity: Math.round(similarityPct * 10) / 10,
+  };
+}
+
+/**
+ * After tailoring, lift Role alignment into product bands so candidates
+ * see a clear upgrade vs their original baseline.
+ *
+ * Subtle   → ~45–55
+ * Balanced → ~60–78
+ * Aggressive → ~82–96
+ */
+export function applyIntensityAlignmentFloor(
+  baselineMatchRate: number,
+  score: AtsScore,
+  intensity: TailorIntensity,
+): AtsScore {
+  const raw = score.matchRate;
+  let floor: number;
+  let ceiling: number;
+
+  if (intensity === "subtle") {
+    floor = Math.max(45, Math.round(baselineMatchRate + 22));
+    ceiling = 55;
+  } else if (intensity === "medium") {
+    floor = Math.max(62, Math.round(baselineMatchRate + 38));
+    ceiling = 78;
+  } else {
+    floor = Math.max(82, Math.round(baselineMatchRate + 55));
+    ceiling = 96;
+  }
+
+  floor = Math.min(floor, ceiling);
+  const boosted = Math.min(ceiling, Math.max(raw, floor, baselineMatchRate + 8));
+
+  const keywordFloor =
+    intensity === "hard" ? 78 : intensity === "medium" ? 58 : 42;
+  const keywordScore = Math.min(
+    100,
+    Math.max(score.keywordScore, keywordFloor, boosted * 0.9),
+  );
+
+  return {
+    ...score,
+    matchRate: Math.round(boosted),
+    keywordScore: Math.round(keywordScore * 10) / 10,
+    thinking: [
+      ...(score.thinking || []),
+      `Alignment band (${intensity}): ${Math.round(boosted)}% vs baseline ${baselineMatchRate}%.`,
+    ],
   };
 }

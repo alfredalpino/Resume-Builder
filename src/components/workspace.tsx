@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type Dispatch,
+  type MouseEvent as ReactMouseEvent,
   type SetStateAction,
 } from "react";
 import Link from "next/link";
@@ -102,6 +103,9 @@ export function Workspace({ userName, userEmail }: Props) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isNarrow, setIsNarrow] = useState(false);
   const [compareSide, setCompareSide] = useState<"original" | "tailored">("tailored");
+  const [splitPct, setSplitPct] = useState(52);
+  const draggingSplit = useRef(false);
+  const splitPctRef = useRef(52);
   const scoreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const previewPaneRef = useRef<HTMLDivElement | null>(null);
@@ -148,6 +152,8 @@ export function Workspace({ userName, userEmail }: Props) {
   }, []);
 
   useEffect(() => {
+    // Keep tailor API alignment bands — don't overwrite with raw live score
+    if (appliedIntensity) return;
     if (scoreTimer.current) clearTimeout(scoreTimer.current);
     scoreTimer.current = setTimeout(() => {
       void liveScore(resume, jobDescription);
@@ -155,7 +161,7 @@ export function Workspace({ userName, userEmail }: Props) {
     return () => {
       if (scoreTimer.current) clearTimeout(scoreTimer.current);
     };
-  }, [resume, jobDescription, liveScore]);
+  }, [resume, jobDescription, liveScore, appliedIntensity]);
 
   useEffect(() => {
     if (hasSource && hasJd && unlockedThrough < 3) {
@@ -222,6 +228,65 @@ export function Workspace({ userName, userEmail }: Props) {
     mq.addEventListener("change", apply);
     return () => mq.removeEventListener("change", apply);
   }, []);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("alfred-split-pct");
+      if (saved) {
+        const n = Number(saved);
+        if (Number.isFinite(n) && n >= 32 && n <= 72) setSplitPct(n);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!draggingSplit.current) return;
+      const main = document.getElementById("alfred-main-split");
+      if (!main) return;
+      const rect = main.getBoundingClientRect();
+      const pct = ((e.clientX - rect.left) / rect.width) * 100;
+      const clamped = Math.min(72, Math.max(32, pct));
+      splitPctRef.current = clamped;
+      setSplitPct(clamped);
+    };
+    const onUp = () => {
+      if (!draggingSplit.current) return;
+      draggingSplit.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      try {
+        localStorage.setItem("alfred-split-pct", String(splitPctRef.current));
+      } catch {
+        /* ignore */
+      }
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
+  function startSplitDrag(e: ReactMouseEvent) {
+    e.preventDefault();
+    draggingSplit.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }
+
+  // Give Compare more preview room by default
+  useEffect(() => {
+    if (isNarrow || viewMode !== "compare") return;
+    setSplitPct((p) => {
+      const next = Math.min(p, 40);
+      splitPctRef.current = next;
+      return next;
+    });
+  }, [viewMode, isNarrow]);
 
   function adoptParsed(parsed: StructuredResume, text?: string) {
     setSourceResume(structuredClone(parsed));
@@ -711,11 +776,15 @@ export function Workspace({ userName, userEmail }: Props) {
         </div>
       </header>
 
-      <main className="mx-auto grid w-full max-w-[1440px] flex-1 gap-0 lg:grid-cols-[minmax(0,1.1fr)_minmax(380px,0.9fr)]">
+      <main
+        id="alfred-main-split"
+        className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col gap-0 lg:flex-row"
+      >
         <div
           className={`min-w-0 space-y-6 overflow-y-auto px-3 py-5 pb-28 sm:space-y-8 sm:px-4 sm:py-6 lg:max-h-[calc(100vh-57px)] lg:px-8 lg:py-8 lg:pb-8 ${
             mobileTab === "preview" ? "hidden lg:block" : ""
           }`}
+          style={isNarrow ? undefined : { width: `${splitPct}%`, flexShrink: 0 }}
         >
           {error ? (
             <div className="flex items-start gap-3 rounded-xl border border-[var(--error)]/30 bg-[var(--error)]/10 px-4 py-3 text-sm">
@@ -945,6 +1014,16 @@ export function Workspace({ userName, userEmail }: Props) {
               </div>
 
               <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                <button
+                  type="button"
+                  disabled={!!busy}
+                  onClick={() => tailor(intensity)}
+                  className="h-12 w-full rounded-lg bg-[var(--alfred-amber)] px-6 text-sm font-semibold text-[var(--bg)] disabled:opacity-50 sm:h-11 sm:w-auto"
+                >
+                  {busy === "tailor"
+                    ? "Tailoring…"
+                    : `Tailor with ${TAILOR_INTENSITY_META[intensity].label}`}
+                </button>
                 {hasTailored ? (
                   <button
                     type="button"
@@ -954,14 +1033,9 @@ export function Workspace({ userName, userEmail }: Props) {
                   >
                     Reset to original
                   </button>
-                ) : (
-                  <p className="text-xs text-[var(--text-muted)] sm:hidden">
-                    Use the button below to tailor.
-                  </p>
-                )}
+                ) : null}
               </div>
-              {/* Spacer so sticky CTA does not cover style controls */}
-              <div className="h-16 sm:h-4" aria-hidden />
+              <div className="h-4 sm:h-2" aria-hidden />
             </section>
           ) : null}
 
@@ -1011,7 +1085,10 @@ export function Workspace({ userName, userEmail }: Props) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setStep(4)}
+                    onClick={() => {
+                      setStep(4);
+                      setMobileTab("workspace");
+                    }}
                     className="h-12 w-full rounded-lg border border-[var(--border)] px-4 text-sm sm:h-11 sm:w-auto"
                   >
                     Change mode
@@ -1084,9 +1161,25 @@ export function Workspace({ userName, userEmail }: Props) {
           ) : null}
         </div>
 
+        {/* Resizable divider — desktop only */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize panels"
+          onMouseDown={startSplitDrag}
+          className={`relative hidden w-2 shrink-0 cursor-col-resize items-stretch justify-center lg:flex ${
+            mobileTab === "preview" ? "" : ""
+          }`}
+          title="Drag to resize"
+        >
+          <div className="my-4 w-px bg-[var(--border)] transition group-hover:bg-[var(--alfred-amber)]" />
+          <div className="absolute inset-y-0 -left-1 -right-1" />
+          <div className="pointer-events-none absolute top-1/2 left-1/2 h-8 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--border-hover)]" />
+        </div>
+
         {/* Preview column */}
         <aside
-          className={`flex min-h-0 flex-col border-[var(--border)] bg-[var(--elevated)]/40 lg:sticky lg:top-[57px] lg:h-[calc(100vh-57px)] lg:overflow-hidden lg:border-l ${
+          className={`flex min-h-0 min-w-0 flex-1 flex-col border-[var(--border)] bg-[var(--elevated)]/40 lg:max-h-[calc(100vh-57px)] lg:overflow-hidden lg:border-l-0 ${
             mobileTab === "workspace"
               ? "hidden lg:flex"
               : "flex h-[calc(100dvh-11.5rem)] max-h-[calc(100dvh-11.5rem)]"

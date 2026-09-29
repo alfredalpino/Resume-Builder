@@ -29,7 +29,14 @@ function anthropicModel(): string {
   return process.env.ANTHROPIC_MODEL?.trim() || "claude-sonnet-4-20250514";
 }
 
-const RESUME_SYSTEM = `You are Alfred Terminal's resume writer. Aggressively rewrite and optimize the candidate resume for the target job description. You may add, invent, or emphasize skills, technologies, metrics, and experience claims that maximize fit for the role. Restructure freely. Return ONLY valid JSON matching the StructuredResume schema (contact, headline, summary, skills[], experience[], education[], certifications[], projects[], extras[]). Summary must start with a capital letter. Avoid coach-speak phrases like Aspiring, deliberate pivot, Tools Already Used, Transferable Strengths. Use strong professional categories such as Core Competencies and Applications when pivoting hard.`;
+const RESUME_SYSTEM = `You are Alfred Terminal's resume writer. Rewrite the candidate resume to maximize role alignment with the job description.
+
+Intensity rules (from plan.intensity):
+- subtle: reorder and weave a few JD keywords; keep most structure; still raise fit meaningfully.
+- medium: rewrite summary/skills/bullets toward the JD; include most must-have tools and themes.
+- hard (Aggressive): maximize JD coverage — include nearly every must-have skill/tool/theme from the JD across summary, skills, and experience bullets. Invent plausible hands-on claims as needed so the resume reads as a strong match.
+
+Always return ONLY valid JSON matching the StructuredResume schema (contact, headline, summary, skills[], experience[], education[], certifications[], projects[], extras[]). Summary must start with a capital letter. Avoid coach-speak: Aspiring, deliberate pivot, Tools Already Used, Transferable Strengths. Prefer Core Competencies + Applications when pivoting hard.`;
 
 const COVER_SYSTEM = `Write a professional, compelling cover letter tailored to this role. Optimize aggressively for the job description. Return plain text only — no markdown fences.`;
 
@@ -164,7 +171,8 @@ export async function writeResumeWithClaude(
     jobDescription: jobDescription.slice(0, 8000),
     sourceResume: source,
     rules: [
-      "Optimize aggressively for maximum JD fit",
+      `Intensity is ${plan.intensity} — obey intensity rules in the system prompt`,
+      "Include plan.missingTools and plan.emphasize in Skills and Experience where useful",
       "You may invent or add skills, tools, metrics, and experience claims as needed",
       "Summary must start with a capital letter",
       "Hard pivots: use Core Competencies + Applications skill categories",
@@ -172,7 +180,7 @@ export async function writeResumeWithClaude(
     ],
   });
 
-  const text = await chatLLM(RESUME_SYSTEM, user, 4096, 0.4);
+  const text = await chatLLM(RESUME_SYSTEM, user, 4096, plan.intensity === "hard" ? 0.55 : 0.4);
   if (!text) return null;
   return parseResumeJson(text);
 }

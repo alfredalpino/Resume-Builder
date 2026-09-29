@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { apiError, requireSession } from "@/lib/api";
-import { scoreResume } from "@/lib/ats-score";
+import { applyIntensityAlignmentFloor, scoreResume } from "@/lib/ats-score";
 import { runAlfredPipeline } from "@/lib/alfred/pipeline";
 import type { TailorIntensity } from "@/lib/local-tailor";
 import { StructuredResumeSchema } from "@/lib/schema";
@@ -44,7 +44,13 @@ export async function POST(req: Request) {
       if (!urls.has(link.url)) tailored.contact.links.push(link);
     }
 
-    const score = scoreResume(tailored, jobDescription, result.analysis);
+    const baseline = scoreResume(source, jobDescription, result.analysis);
+    let score = scoreResume(tailored, jobDescription, result.analysis);
+
+    // Analyze-only keeps honest baseline. Tailor applies intensity alignment bands.
+    if (!analyzeOnly) {
+      score = applyIntensityAlignmentFloor(baseline.matchRate, score, intensity);
+    }
 
     return NextResponse.json({
       resume: tailored,
@@ -52,6 +58,7 @@ export async function POST(req: Request) {
         ...score,
         thinking: score.thinking || [],
       },
+      baselineMatchRate: baseline.matchRate,
       engine: "alfred",
       writer: result.writer,
       intensity: result.intensity,

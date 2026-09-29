@@ -17,6 +17,7 @@ import {
 } from "@/lib/resume/optimizer-plan";
 import { validateTailoredResume } from "@/lib/resume/validate";
 import { polishResume } from "@/lib/resume/polish";
+import { injectJdCoverage } from "@/lib/resume/inject-jd-coverage";
 import { aiWriterAvailable, writeResumeWithClaude } from "@/lib/resume/writer-claude";
 import { jevPostValidate, jevPreAnalyze } from "@/lib/jev/client";
 import { getEntitlements, type Entitlements } from "@/lib/billing/entitlements";
@@ -142,6 +143,10 @@ export async function runAlfredPipeline(
   if (!validation.ok) {
     thinking.push(`Polish notes: ${validation.issues.join("; ")}`);
   }
+
+  // Force JD keyword/tool coverage so alignment actually moves with intensity
+  tailored = injectJdCoverage(tailored, analysis, effectiveIntensity);
+  thinking.push(`JD coverage inject (${effectiveIntensity}).`);
 
   const post = await jevPostValidate({
     source: resume,
