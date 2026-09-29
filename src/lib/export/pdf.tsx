@@ -22,15 +22,17 @@ function makeStyles(style: ResumeStyle) {
   const section = body + 0.5;
   const contact = Math.max(8, body - 1);
   const headline = body + 0.5;
+  const pad = style.pagePadding ?? 40;
+  const dens = style.density ?? 1;
 
   return StyleSheet.create({
     page: {
-      paddingTop: 32,
-      paddingBottom: 32,
-      paddingHorizontal: 40,
+      paddingTop: Math.round(32 * dens),
+      paddingBottom: Math.round(32 * dens),
+      paddingHorizontal: pad,
       fontFamily: fonts.regular,
       fontSize: body,
-      lineHeight: 1.35,
+      lineHeight: dens < 1 ? 1.28 : dens > 1 ? 1.42 : 1.35,
       color: "#111111",
     },
     name: {
@@ -38,19 +40,19 @@ function makeStyles(style: ResumeStyle) {
       fontFamily: fonts.bold,
       textAlign: "center",
       letterSpacing: 0.4,
-      marginBottom: 3,
+      marginBottom: Math.round(3 * dens),
     },
     headline: {
       fontSize: headline,
       fontFamily: fonts.bold,
       textAlign: "center",
       color: "#222222",
-      marginBottom: 3,
+      marginBottom: Math.round(3 * dens),
     },
     contact: {
       fontSize: contact,
       textAlign: "center",
-      marginBottom: 10,
+      marginBottom: Math.round(10 * dens),
       color: "#222222",
     },
     contactLink: {
@@ -60,8 +62,8 @@ function makeStyles(style: ResumeStyle) {
     section: {
       fontSize: section,
       fontFamily: fonts.bold,
-      marginTop: 10,
-      marginBottom: 4,
+      marginTop: Math.round(10 * dens),
+      marginBottom: Math.round(4 * dens),
       textTransform: "uppercase",
       letterSpacing: 0.5,
       borderBottomWidth: 1,
@@ -69,13 +71,13 @@ function makeStyles(style: ResumeStyle) {
       paddingBottom: 2,
     },
     body: {
-      marginBottom: 3,
+      marginBottom: Math.round(3 * dens),
       textAlign: "justify",
     },
     jobHeader: {
       fontFamily: fonts.bold,
       fontSize: body,
-      marginTop: 5,
+      marginTop: Math.round(5 * dens),
       marginBottom: 1,
     },
     meta: {
@@ -85,7 +87,7 @@ function makeStyles(style: ResumeStyle) {
     },
     bullet: {
       marginLeft: 10,
-      marginBottom: 2,
+      marginBottom: Math.round(2 * dens),
     },
   });
 }

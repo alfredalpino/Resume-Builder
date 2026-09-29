@@ -35,6 +35,8 @@ import {
 } from "@/components/app-shell/progress-stepper";
 import { AnalysisPanel, type AnalysisPayload } from "@/components/analysis/AnalysisPanel";
 import { AtsRobustnessPanel } from "@/components/analysis/AtsRobustnessPanel";
+import { IrInspector } from "@/components/analysis/IrInspector";
+import { RoundTripPanel } from "@/components/analysis/RoundTripPanel";
 import {
   GuidedCreateForm,
   blankGuidedResume,
@@ -50,7 +52,13 @@ import {
 } from "@/lib/ats-robustness";
 import { TAILOR_INTENSITY_META, type TailorIntensity } from "@/lib/center";
 import { COMPILE_PLACEHOLDER } from "@/lib/resume/compiler";
-import { DEFAULT_RESUME_STYLE, type ResumeStyle } from "@/lib/style";
+import type { RoundTripReport } from "@/lib/resume/roundtrip";
+import {
+  applyTemplate,
+  DEFAULT_RESUME_STYLE,
+  RESUME_TEMPLATES,
+  type ResumeStyle,
+} from "@/lib/style";
 
 type Props = {
   userName?: string | null;
@@ -108,6 +116,7 @@ export function Workspace({ userName, userEmail }: Props) {
   const [compileNotes, setCompileNotes] = useState("");
   const [compileWarnings, setCompileWarnings] = useState<string[]>([]);
   const [guidedDraft, setGuidedDraft] = useState(() => blankGuidedResume());
+  const [roundTrip, setRoundTrip] = useState<RoundTripReport | null>(null);
   const [step, setStep] = useState<WorkflowStepId>(1);
   const [unlockedThrough, setUnlockedThrough] = useState<WorkflowStepId>(1);
   const [humanAnalysis, setHumanAnalysis] = useState<AnalysisPayload | null>(null);
@@ -640,6 +649,25 @@ export function Workspace({ userName, userEmail }: Props) {
     }
   }
 
+  async function runRoundTripCheck() {
+    setBusy("roundtrip");
+    setError(null);
+    try {
+      const res = await fetch("/api/validate/roundtrip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resume, style }),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      const data = (await res.json()) as { report: RoundTripReport };
+      setRoundTrip(data.report);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Round-trip check failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   function updateContactField(
     field: "fullName" | "email" | "phone" | "location",
     value: string,
@@ -1147,6 +1175,33 @@ export function Workspace({ userName, userEmail }: Props) {
               </div>
 
               <div className="mt-5 space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-[var(--text-muted)]">
+                    Style template
+                  </p>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                    {RESUME_TEMPLATES.map((t) => {
+                      const active = (style.template || "classic") === t.id;
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setStyle(applyTemplate(t.id))}
+                          className={`rounded-lg border px-3 py-2.5 text-left ${
+                            active
+                              ? "border-[var(--alfred-amber)] bg-[var(--alfred-amber)]/10"
+                              : "border-[var(--border)] hover:border-[var(--border-hover)]"
+                          }`}
+                        >
+                          <p className="text-sm font-medium">{t.label}</p>
+                          <p className="mt-0.5 text-[11px] leading-snug text-[var(--text-muted)]">
+                            {t.blurb}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
                 <label className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
@@ -1167,6 +1222,7 @@ export function Workspace({ userName, userEmail }: Props) {
                         setStyle((s) => ({
                           ...s,
                           fontFamily: e.target.value as ResumeStyle["fontFamily"],
+                          template: s.template || "classic",
                         }))
                       }
                     >
@@ -1268,6 +1324,21 @@ export function Workspace({ userName, userEmail }: Props) {
                     <AtsRobustnessPanel report={displayedAts} />
                   </div>
                 ) : null}
+                <div className="mt-4 max-w-md space-y-3">
+                  <RoundTripPanel
+                    report={roundTrip}
+                    busy={busy === "roundtrip"}
+                    onRun={() => void runRoundTripCheck()}
+                  />
+                  <IrInspector
+                    resume={resume}
+                    onApply={(next) => {
+                      setResume(next);
+                      setAtsRobustness(null);
+                      setRoundTrip(null);
+                    }}
+                  />
+                </div>
                 <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                   <button
                     type="button"

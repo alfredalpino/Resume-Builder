@@ -25,10 +25,11 @@ export function ResumePaper({
   const showHeadline = style.showHeadline && Boolean(resume.headline?.trim());
 
   if (fluid) {
+    const dens = style.density ?? 1;
     const css: CSSProperties = {
       fontFamily: previewFontFamily(style),
       fontSize: `${Math.max(style.fontSize, 10)}px`,
-      lineHeight: 1.45,
+      lineHeight: dens < 1 ? 1.35 : dens > 1 ? 1.55 : 1.45,
     };
     return (
       <article
@@ -45,10 +46,11 @@ export function ResumePaper({
     );
   }
 
+  const dens = style.density ?? 1;
   const css: CSSProperties = {
     fontFamily: previewFontFamily(style),
     fontSize: `${style.fontSize}px`,
-    lineHeight: 1.45,
+    lineHeight: dens < 1 ? 1.35 : dens > 1 ? 1.55 : 1.45,
     width: A4_WIDTH_PX,
     minHeight: A4_HEIGHT_PX,
   };
