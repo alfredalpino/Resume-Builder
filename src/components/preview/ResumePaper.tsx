@@ -210,6 +210,18 @@ function PaperBody({
           ))}
         </>
       ) : null}
+      {resume.awards?.length ? (
+        <>
+          <h3 className="mt-3 border-b border-black/80 pb-0.5 font-bold uppercase tracking-wide">
+            Awards
+          </h3>
+          {resume.awards.map((a) => (
+            <p key={a} className="mt-1">
+              {a}
+            </p>
+          ))}
+        </>
+      ) : null}
     </>
   );
 }

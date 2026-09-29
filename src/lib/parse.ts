@@ -332,6 +332,9 @@ const SECTION_ALIASES: Record<string, string> = {
   "open source projects": "projects",
   "production projects": "projects",
   "selected projects": "projects",
+  awards: "awards",
+  achievements: "awards",
+  honors: "awards",
   "key strengths": "ignore",
   "target roles": "ignore",
   "personal details": "ignore",
@@ -606,6 +609,7 @@ function heuristicDraft(rawText: string, links: ResumeLink[]): StructuredResume 
     experience: [],
     education: [],
     certifications: [],
+    awards: [],
     projects: [],
     extras: [],
     preamble: [],
@@ -697,6 +701,10 @@ function heuristicDraft(rawText: string, links: ResumeLink[]): StructuredResume 
 
   if (buckets.certifications.length) {
     draft.certifications = uniqueLines(buckets.certifications);
+  }
+
+  if (buckets.awards.length) {
+    draft.awards = uniqueLines(buckets.awards);
   }
 
   if (buckets.education.length) {

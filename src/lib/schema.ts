@@ -51,6 +51,7 @@ export const StructuredResumeSchema = z.object({
   experience: z.array(ExperienceSchema).default([]),
   education: z.array(EducationSchema).default([]),
   certifications: z.array(z.string()).default([]),
+  awards: z.array(z.string()).default([]),
   projects: z.array(ProjectSchema).default([]),
   extras: z.array(z.string()).optional(),
 });
@@ -87,6 +88,7 @@ export function emptyResume(): StructuredResume {
     experience: [],
     education: [],
     certifications: [],
+    awards: [],
     projects: [],
     extras: [],
   };
@@ -114,6 +116,9 @@ export function resumeToPlainText(resume: StructuredResume): string {
   }
   if (resume.certifications.length) {
     lines.push("CERTIFICATIONS", ...resume.certifications);
+  }
+  if (resume.awards?.length) {
+    lines.push("AWARDS", ...resume.awards);
   }
   if (resume.experience.length) {
     lines.push("PROFESSIONAL EXPERIENCE");

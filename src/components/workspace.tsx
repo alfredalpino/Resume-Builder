@@ -45,6 +45,7 @@ import {
   type AtsRobustnessReport,
 } from "@/lib/ats-robustness";
 import { TAILOR_INTENSITY_META, type TailorIntensity } from "@/lib/center";
+import { COMPILE_PLACEHOLDER } from "@/lib/resume/compiler";
 import { DEFAULT_RESUME_STYLE, type ResumeStyle } from "@/lib/style";
 
 type Props = {
@@ -98,6 +99,9 @@ export function Workspace({ userName, userEmail }: Props) {
   const [coverLetter, setCoverLetter] = useState("");
   const [copied, setCopied] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
+  const [entryMode, setEntryMode] = useState<"upload" | "create">("upload");
+  const [compileNotes, setCompileNotes] = useState("");
+  const [compileWarnings, setCompileWarnings] = useState<string[]>([]);
   const [step, setStep] = useState<WorkflowStepId>(1);
   const [unlockedThrough, setUnlockedThrough] = useState<WorkflowStepId>(1);
   const [humanAnalysis, setHumanAnalysis] = useState<AnalysisPayload | null>(null);
@@ -368,6 +372,42 @@ export function Workspace({ userName, userEmail }: Props) {
       setFileName("pasted-resume.txt");
     } catch (err) {
       setError(err instanceof Error ? err.message : "We couldn't parse that text.");
+    } finally {
+      setBusy(null);
+      setProcessStep(null);
+    }
+  }
+
+  async function compileFromNotes(forceAi = false) {
+    const text = compileNotes.trim();
+    if (text.length < 20) {
+      setError("Add your name, experience, education, and skills (at least a short draft).");
+      return;
+    }
+    setBusy("compile");
+    setProcessStep("Compiling notes into resume JSON");
+    setError(null);
+    setCompileWarnings([]);
+    try {
+      const res = await fetch("/api/compile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, forceAi }),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      const data = (await res.json()) as {
+        resume: StructuredResume;
+        warnings?: string[];
+        engine?: string;
+        atsRobustness?: AtsRobustnessReport;
+      };
+      adoptParsed(data.resume, text);
+      setFileName("compiled-resume.json");
+      setCompileWarnings(data.warnings || []);
+      if (data.atsRobustness) setAtsRobustness(data.atsRobustness);
+      setViewMode("edit");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Compile failed.");
     } finally {
       setBusy(null);
       setProcessStep(null);
@@ -833,51 +873,124 @@ export function Workspace({ userName, userEmail }: Props) {
             <section>
               <h2 className="text-xl font-semibold tracking-tight">Resume</h2>
               <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                Start with your current resume.
+                Upload an existing resume, or create one from scratch with natural language.
               </p>
-              <label className="mt-5 flex min-h-[160px] cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface)] px-4 py-10 text-center transition active:border-[var(--alfred-amber)]/50 hover:border-[var(--alfred-amber)]/40 sm:px-6 sm:py-12">
-                <Upload className="h-8 w-8 text-[var(--text-muted)]" />
-                <span className="mt-3 text-sm font-medium">
-                  <span className="sm:hidden">Tap to upload PDF, DOCX, or TXT</span>
-                  <span className="hidden sm:inline">Drop PDF, DOCX, TXT, or Markdown</span>
-                </span>
-                <span className="mt-1 text-xs text-[var(--text-muted)]">Browse files · max 5 MB</span>
-                <input
-                  type="file"
-                  accept=".pdf,.docx,.txt,.md,.markdown,application/pdf,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  className="hidden"
-                  onChange={(e) => onFileChange(e.target.files?.[0] || null)}
-                />
-              </label>
-              <div className="mt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowRaw((s) => !s)}
-                  className="inline-flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                >
-                  <ChevronDown className={`h-3.5 w-3.5 transition ${showRaw ? "rotate-180" : ""}`} />
-                  Or paste resume text
-                </button>
-                {showRaw ? (
-                  <div className="mt-2">
-                    <textarea
-                      value={rawText}
-                      onChange={(e) => setRawText(e.target.value)}
-                      rows={6}
-                      className="w-full rounded-lg border border-[var(--border)] bg-[var(--elevated)] px-3 py-2 font-mono text-xs outline-none focus:border-[var(--alfred-amber)]"
-                      placeholder="Paste resume text…"
+
+              <div className="mt-4 flex gap-2">
+                {(
+                  [
+                    { id: "upload" as const, label: "Upload" },
+                    { id: "create" as const, label: "Create from scratch" },
+                  ] as const
+                ).map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setEntryMode(t.id)}
+                    className={`rounded-lg px-3 py-2 text-sm font-medium ${
+                      entryMode === t.id
+                        ? "bg-[var(--alfred-amber)] text-[var(--bg)]"
+                        : "border border-[var(--border)] text-[var(--text-secondary)]"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {entryMode === "upload" ? (
+                <>
+                  <label className="mt-5 flex min-h-[160px] cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface)] px-4 py-10 text-center transition active:border-[var(--alfred-amber)]/50 hover:border-[var(--alfred-amber)]/40 sm:px-6 sm:py-12">
+                    <Upload className="h-8 w-8 text-[var(--text-muted)]" />
+                    <span className="mt-3 text-sm font-medium">
+                      <span className="sm:hidden">Tap to upload PDF, DOCX, or TXT</span>
+                      <span className="hidden sm:inline">Drop PDF, DOCX, TXT, or Markdown</span>
+                    </span>
+                    <span className="mt-1 text-xs text-[var(--text-muted)]">Browse files · max 5 MB</span>
+                    <input
+                      type="file"
+                      accept=".pdf,.docx,.txt,.md,.markdown,application/pdf,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      className="hidden"
+                      onChange={(e) => onFileChange(e.target.files?.[0] || null)}
                     />
+                  </label>
+                  <div className="mt-4">
+                    <button
+                      type="button"
+                      onClick={() => setShowRaw((s) => !s)}
+                      className="inline-flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                    >
+                      <ChevronDown className={`h-3.5 w-3.5 transition ${showRaw ? "rotate-180" : ""}`} />
+                      Or paste resume text
+                    </button>
+                    {showRaw ? (
+                      <div className="mt-2">
+                        <textarea
+                          value={rawText}
+                          onChange={(e) => setRawText(e.target.value)}
+                          rows={6}
+                          className="w-full rounded-lg border border-[var(--border)] bg-[var(--elevated)] px-3 py-2 font-mono text-xs outline-none focus:border-[var(--alfred-amber)]"
+                          placeholder="Paste resume text…"
+                        />
+                        <button
+                          type="button"
+                          disabled={!!busy}
+                          onClick={parsePastedText}
+                          className="mt-2 rounded-lg border border-[var(--border)] px-3 py-2 text-sm hover:border-[var(--border-hover)] disabled:opacity-50"
+                        >
+                          {busy === "parse" ? "Parsing…" : "Parse text"}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </>
+              ) : (
+                <div className="mt-5 space-y-3">
+                  <p className="text-sm text-[var(--text-secondary)]">
+                    Describe yourself in plain language. Alfred compiles it into structured JSON,
+                    then you can preview and download a PDF.
+                  </p>
+                  <textarea
+                    value={compileNotes}
+                    onChange={(e) => setCompileNotes(e.target.value)}
+                    rows={16}
+                    className="w-full rounded-xl border border-[var(--border)] bg-[var(--elevated)] px-3 py-3 font-mono text-xs leading-relaxed outline-none focus:border-[var(--alfred-amber)]"
+                    placeholder={COMPILE_PLACEHOLDER}
+                  />
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                     <button
                       type="button"
                       disabled={!!busy}
-                      onClick={parsePastedText}
-                      className="mt-2 rounded-lg border border-[var(--border)] px-3 py-2 text-sm hover:border-[var(--border-hover)] disabled:opacity-50"
+                      onClick={() => compileFromNotes(false)}
+                      className="h-11 rounded-lg bg-[var(--alfred-amber)] px-5 text-sm font-semibold text-[var(--bg)] disabled:opacity-50"
                     >
-                      {busy === "parse" ? "Parsing…" : "Parse text"}
+                      {busy === "compile" ? "Compiling…" : "Compile resume"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!!busy}
+                      onClick={() => compileFromNotes(true)}
+                      className="h-11 rounded-lg border border-[var(--border)] px-4 text-sm disabled:opacity-50"
+                    >
+                      Compile with AI
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCompileNotes(COMPILE_PLACEHOLDER)}
+                      className="h-11 rounded-lg border border-[var(--border)] px-4 text-sm text-[var(--text-secondary)]"
+                    >
+                      Load example
                     </button>
                   </div>
-                ) : null}
-              </div>
+                  {compileWarnings.length ? (
+                    <ul className="space-y-1 text-xs text-[var(--warning)]">
+                      {compileWarnings.map((w) => (
+                        <li key={w}>{w}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              )}
             </section>
           ) : null}
 

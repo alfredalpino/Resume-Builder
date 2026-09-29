@@ -171,6 +171,17 @@ function ResumeDocument({
           </View>
         ) : null}
 
+        {resume.awards && resume.awards.length > 0 ? (
+          <View>
+            <Text style={styles.section}>Awards</Text>
+            {resume.awards.map((a) => (
+              <Text key={a} style={styles.body}>
+                {a}
+              </Text>
+            ))}
+          </View>
+        ) : null}
+
         {resume.experience.length > 0 ? (
           <View>
             <Text style={styles.section}>Professional Experience</Text>

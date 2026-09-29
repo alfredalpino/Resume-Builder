@@ -29,6 +29,7 @@ export const config = {
   matcher: [
     "/app/:path*",
     "/api/parse",
+    "/api/compile",
     "/api/tailor",
     "/api/score",
     "/api/export/:path*",

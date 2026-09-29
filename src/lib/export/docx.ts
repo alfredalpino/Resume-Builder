@@ -186,6 +186,11 @@ export async function buildDocxBuffer(
     for (const c of resume.certifications) children.push(body(c));
   }
 
+  if (resume.awards?.length) {
+    children.push(sectionTitle("Awards"));
+    for (const a of resume.awards) children.push(body(a));
+  }
+
   if (resume.experience.length) {
     children.push(sectionTitle("Professional Experience"));
     for (const job of resume.experience) {
